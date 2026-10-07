@@ -102,19 +102,21 @@ describe('generatePrisma', () => {
     const { schema, warnings } = generatePrisma(diagram)
     expect(warnings).toEqual([])
     expect(schema).toContain('provider = "postgresql"')
-    expect(schema).toContain('model Users {')
+    expect(schema).toContain('model User {') // singular model, mapped to the real table
     expect(schema).toContain('@@map("users")')
     expect(schema).toMatch(/id\s+Int\s+@id @default\(autoincrement\(\)\)/)
     expect(schema).toContain('@unique @db.VarChar(255)')
     expect(schema).toMatch(/createdAt\s+DateTime\s+@default\(now\(\)\) @map\("created_at"\)/)
     expect(schema).toContain('@default(member)')
-    expect(schema).toMatch(/blogPosts\s+BlogPosts\[\]/)
+    expect(schema).toMatch(/blogPosts\s+BlogPost\[\]/)
     expect(schema).toContain('@relation(fields: [authorId], references: [id], onDelete: Cascade)')
-    expect(schema).toMatch(/author\s+Users\s+@relation/)
-    expect(schema).toContain('model BlogPosts {')
+    expect(schema).toMatch(/author\s+User\s+@relation/)
+    expect(schema).toContain('model BlogPost {')
+    expect(schema).toContain('@@map("blog_posts")')
+    expect(schema).toContain('@@index([authorId])') // PostgreSQL doesn't index foreign keys by itself
     expect(schema).toContain('@default(uuid())')
     expect(schema).toContain('@default(0)')
-    expect(schema).toContain('enum UsersRole {')
+    expect(schema).toContain('enum UserRole {')
   })
 
   it('uses one-to-one for unique foreign keys and composite ids', () => {
@@ -137,7 +139,8 @@ describe('generatePrisma', () => {
       ],
     })
     expect(schema).toContain('@@id([aId, k])')
-    expect(schema).toMatch(/b\s+B\[\]/)
+    expect(schema).toMatch(/bs\s+B\[\]/)
+    expect(schema).not.toContain('@@index') // a_id leads the primary key, so it is already indexed
   })
 
   it('names relations when two foreign keys point at the same model', () => {
@@ -156,8 +159,10 @@ describe('generatePrisma', () => {
         },
       ],
     })
-    expect(schema).toContain('@relation("MessageSenderId"')
-    expect(schema).toContain('@relation("MessageReceiverId"')
+    expect(schema).toContain('@relation("MessageSender"')
+    expect(schema).toContain('@relation("MessageReceiver"')
+    expect(schema).toMatch(/messagesBySender\s+Message\[\]\s+@relation\("MessageSender"\)/)
+    expect(schema).toMatch(/messagesByReceiver\s+Message\[\]\s+@relation\("MessageReceiver"\)/)
   })
 
   it('emits implicit many-to-many relations, including self-referencing ones', () => {
@@ -177,8 +182,8 @@ describe('generatePrisma', () => {
     expect(warnings).toEqual([])
     expect(schema).toMatch(/tags\s+Tag\[\]\s+@relation\("PostToTag"\)/)
     expect(schema).toMatch(/posts\s+Post\[\]\s+@relation\("PostToTag"\)/)
-    expect(schema).toMatch(/userA\s+User\[\]\s+@relation\("UserToUser"\)/)
-    expect(schema).toMatch(/userB\s+User\[\]\s+@relation\("UserToUser"\)/)
+    expect(schema).toMatch(/usersA\s+User\[\]\s+@relation\("UserToUser"\)/)
+    expect(schema).toMatch(/usersB\s+User\[\]\s+@relation\("UserToUser"\)/)
   })
 
   it('skips many-to-many without a single primary key', () => {
@@ -208,8 +213,92 @@ describe('generatePrisma', () => {
         },
       ],
     })
-    expect(generatePrisma(table(false)).schema).toMatch(/nodeByParent\s+Node\[\]/)
+    expect(generatePrisma(table(false)).schema).toMatch(/nodesByParent\s+Node\[\]/)
     expect(generatePrisma(table(true)).schema).toMatch(/nodeByParent\s+Node\?/)
+  })
+
+  describe('production conventions', () => {
+    const tables = (provider: 'postgresql' | 'mysql' | 'sqlite' = 'postgresql') => ({
+      provider,
+      tables: [
+        { id: 'u', name: 'users', columns: [col('u1', 'id', 'SERIAL', { primaryKey: true, notNull: true })] },
+        { id: 'c', name: 'categories', columns: [col('c1', 'id', 'SERIAL', { primaryKey: true, notNull: true })] },
+        {
+          id: 'p',
+          name: 'posts',
+          columns: [
+            col('p1', 'id', 'SERIAL', { primaryKey: true, notNull: true }),
+            col('p2', 'author_id', 'INT', { notNull: true, references: { tableId: 'u', columnId: 'u1' } }),
+            col('p3', 'category_id', 'INT', { references: { tableId: 'c', columnId: 'c1' } }),
+            col('p4', 'updated_at', 'TIMESTAMP', { notNull: true, default: 'now()' }),
+            col('p5', 'created_at', 'TIMESTAMP', { notNull: true, default: 'now()' }),
+          ],
+        },
+        {
+          id: 'pr',
+          name: 'profiles',
+          columns: [
+            col('r1', 'id', 'SERIAL', { primaryKey: true, notNull: true }),
+            col('r2', 'user_id', 'INT', { notNull: true, unique: true, references: { tableId: 'u', columnId: 'u1' } }),
+          ],
+        },
+      ],
+      manyToMany: [{ id: 'm', aTableId: 'p', bTableId: 'c' }],
+    })
+
+    it('uses singular models and plural lists, never "postss"', () => {
+      const { schema } = generatePrisma(tables())
+      for (const m of ['User', 'Category', 'Post', 'Profile']) expect(schema).toContain(`model ${m} {`)
+      expect(schema).toMatch(/categories\s+Category\[\]\s+@relation\("PostToCategory"\)/)
+      expect(schema).toMatch(/\bposts\s+Post\[\]/)
+      expect(schema).toMatch(/\bprofile\s+Profile\?/) // one-to-one: a single, optional
+      expect(schema).not.toMatch(/\w+ss\s+\w+\[\]/) // postss, tagss...
+    })
+
+    it('indexes foreign keys on PostgreSQL and SQLite, but not MySQL (which does it itself) or unique ones', () => {
+      const pg = generatePrisma(tables('postgresql')).schema
+      expect(pg).toContain('@@index([authorId])')
+      expect(pg).toContain('@@index([categoryId])')
+      expect(pg).not.toContain('@@index([userId])') // user_id is unique: already indexed
+      expect(generatePrisma(tables('sqlite')).schema).toContain('@@index([authorId])')
+      expect(generatePrisma(tables('mysql')).schema).not.toContain('@@index')
+    })
+
+    it('orders block attributes @@id, @@index, @@map and keeps updated_at current with @updatedAt', () => {
+      const { schema } = generatePrisma(tables())
+      const post = schema.slice(schema.indexOf('model Post {'), schema.indexOf('model Profile {'))
+      expect(post).toMatch(/updatedAt\s+DateTime\s+@default\(now\(\)\) @updatedAt @map\("updated_at"\)/)
+      expect(post).not.toMatch(/createdAt[^\n]*@updatedAt/)
+      expect(post.indexOf('@@index([authorId])')).toBeLessThan(post.indexOf('@@map("posts")'))
+    })
+
+    it('explains Prisma 7 setup in the header and lists warnings there', () => {
+      const clean = generatePrisma(tables()).schema
+      expect(clean.startsWith('// Prisma schema generated by erd.designer.')).toBe(true)
+      expect(clean).toContain('prisma.config.ts')
+      expect(clean).not.toContain('// Note:')
+
+      const backwards = generatePrisma({
+        provider: 'postgresql',
+        tables: [
+          { id: 'u', name: 'users', columns: [col('u1', 'id', 'SERIAL', { primaryKey: true, notNull: true, references: { tableId: 'p', columnId: 'p1' } })] },
+          { id: 'p', name: 'posts', columns: [col('p1', 'id', 'SERIAL', { primaryKey: true, notNull: true }), col('p2', 'author_id', 'INT')] },
+        ],
+      })
+      expect(backwards.warnings.join('\n')).toMatch(/users\.id: an auto-increment primary key can't also be a foreign key to posts\.id/)
+      expect(backwards.schema).toContain("// Note: users.id: an auto-increment primary key can't also be a foreign key")
+    })
+
+    it('does not warn for a legitimate shared primary key (a profile whose id IS the user id)', () => {
+      const { warnings } = generatePrisma({
+        provider: 'postgresql',
+        tables: [
+          { id: 'u', name: 'users', columns: [col('u1', 'id', 'INT', { primaryKey: true, notNull: true })] },
+          { id: 'p', name: 'profiles', columns: [col('p1', 'user_id', 'INT', { primaryKey: true, notNull: true, references: { tableId: 'u', columnId: 'u1' } })] },
+        ],
+      })
+      expect(warnings).toEqual([])
+    })
   })
 
   it('warns instead of throwing on bad input', () => {

@@ -1,4 +1,5 @@
 import { isOneToOne, type Column, type Diagram, type ReferentialAction, type Table } from './model'
+import { pluralizeName, singularizeName } from './naming'
 import { checkRelations } from './relations'
 import { resolveSqlType, type ResolvedType } from './sqlType'
 
@@ -23,7 +24,12 @@ type ModelDraft = {
   columnField: Map<string, string>
   /** column id -> resolved SQL type */
   columnType: Map<string, ResolvedType>
-  blockAttrs: string[]
+  /** `@@id([...])` for composite primary keys. */
+  idAttrs: string[]
+  /** `@@index([fk])` for foreign keys that nothing else already indexes. */
+  indexAttrs: string[]
+  /** `@@map("table_name")` when the model name differs from the table name. */
+  mapAttr?: string
 }
 
 const ACTIONS: Record<ReferentialAction, string> = {
@@ -99,7 +105,8 @@ export function generatePrisma(diagram: Diagram): GenerateResult {
 
   // ---- Pass 1: models and scalar fields -------------------------------------------------
   const drafts: ModelDraft[] = tables.map((table) => {
-    const name = unique(safeIdent(toPascal(table.name), 'Model'), modelNames)
+    // Prisma convention: models are singular PascalCase (`User`), mapped to the real table (`users`) with @@map.
+    const name = unique(safeIdent(toPascal(singularizeName(table.name)), 'Model'), modelNames)
     const draft: ModelDraft = {
       table,
       name,
@@ -107,7 +114,8 @@ export function generatePrisma(diagram: Diagram): GenerateResult {
       fieldNames: new Set(),
       columnField: new Map(),
       columnType: new Map(),
-      blockAttrs: [],
+      idAttrs: [],
+      indexAttrs: [],
     }
 
     const pkCols = table.columns.filter((c) => c.primaryKey)
@@ -152,6 +160,8 @@ export function generatePrisma(diagram: Diagram): GenerateResult {
           if (def) attrs.push(`@default(${def})`)
         }
         if (col.unique && !(col.primaryKey && pkCols.length === 1)) attrs.push('@unique')
+        // `updated_at` columns are kept current by Prisma itself (it sets them on every update).
+        if (t.scalar === 'DateTime' && !t.array && /^updated_?at$/i.test(col.name)) attrs.push('@updatedAt')
         if (fieldName !== col.name) attrs.push(`@map(${q(col.name)})`)
         if (t.native) attrs.push(`@db.${t.native}`)
       }
@@ -172,9 +182,9 @@ export function generatePrisma(diagram: Diagram): GenerateResult {
     }
 
     if (pkCols.length > 1) {
-      draft.blockAttrs.push(`@@id([${pkCols.map((c) => draft.columnField.get(c.id)).join(', ')}])`)
+      draft.idAttrs.push(`@@id([${pkCols.map((c) => draft.columnField.get(c.id)).join(', ')}])`)
     }
-    if (name !== table.name) draft.blockAttrs.push(`@@map(${q(table.name)})`)
+    if (name !== table.name) draft.mapAttr = `@@map(${q(table.name)})`
     if (!pkCols.length && !table.columns.some((c) => c.unique)) {
       warnings.push(`${table.name}: Prisma models need a primary key or a unique column`)
     }
@@ -201,25 +211,53 @@ export function generatePrisma(diagram: Diagram): GenerateResult {
     const key = pairKey(l.source, l.target)
     pairCount.set(key, (pairCount.get(key) ?? 0) + 1)
   }
+  // A many-to-many between the same two models is one more relation between them (it is always named), so Prisma
+  // can only tell the foreign-key relations from it if those are named as well.
+  for (const m of diagram.manyToMany ?? []) {
+    const a = drafts.find((d) => d.table.id === m.aTableId)
+    const b = drafts.find((d) => d.table.id === m.bTableId)
+    if (a && b) pairCount.set(pairKey(a, b), (pairCount.get(pairKey(a, b)) ?? 0) + 1)
+  }
 
   for (const { source, col, target, targetCol } of links) {
     const fkField = source.columnField.get(col.id)!
     const refField = target.columnField.get(targetCol.id)!
     const action = col.references!
 
-    const ambiguous = source === target || (pairCount.get(pairKey(source, target)) ?? 0) > 1
-    const relName = ambiguous ? `${source.name}${toPascal(fkField)}` : undefined
+    // A key that is both auto-generated and a foreign key contradicts itself: the usual cause is a relation drawn
+    // backwards (from the parent's id to the child), which also leaves the real foreign key column unrelated.
+    if (col.primaryKey && source.columnType.get(col.id)?.autoIncrement) {
+      warnings.push(
+        `${source.table.name}.${col.name}: an auto-increment primary key can't also be a foreign key to ` +
+          `${target.table.name}.${targetCol.name}. The relation is probably drawn backwards: the foreign key belongs ` +
+          `on the table that refers to the other one.`,
+      )
+    }
 
-    // forward field (on the table holding the foreign key)
+    const ambiguous = source === target || (pairCount.get(pairKey(source, target)) ?? 0) > 1
+
+    // forward field (on the table holding the foreign key): `authorId` -> `author`
     const stripped = fkField.replace(/_?[iI]d$/, '')
     const forwardBase = stripped && stripped !== fkField ? stripped : toCamel(target.name)
     const forwardName = unique(forwardBase, source.fieldNames)
+    // Several relations between the same two models (or a self-reference) must be told apart by name.
+    const relName = ambiguous ? `${source.name}${toPascal(forwardName)}` : undefined
+    // SET NULL can't apply to a required column: Prisma rejects the whole schema, so leave the action out (the
+    // foreign key then uses the default for a required relation) and say so.
+    const required = col.notNull || col.primaryKey
+    const onDelete = required && action.onDelete === 'SET NULL' ? undefined : action.onDelete
+    const onUpdate = required && action.onUpdate === 'SET NULL' ? undefined : action.onUpdate
+    if (required && (action.onDelete === 'SET NULL' || action.onUpdate === 'SET NULL')) {
+      warnings.push(
+        `${source.table.name}.${col.name}: SET NULL needs an optional (nullable) column, so it was left out of the Prisma relation`,
+      )
+    }
     const relArgs = [
       relName && q(relName),
       `fields: [${fkField}]`,
       `references: [${refField}]`,
-      action.onDelete && `onDelete: ${ACTIONS[action.onDelete]}`,
-      action.onUpdate && `onUpdate: ${ACTIONS[action.onUpdate]}`,
+      onDelete && `onDelete: ${ACTIONS[onDelete]}`,
+      onUpdate && `onUpdate: ${ACTIONS[onUpdate]}`,
     ].filter(Boolean)
     source.fields.push({
       name: forwardName,
@@ -229,9 +267,10 @@ export function generatePrisma(diagram: Diagram): GenerateResult {
       attrs: [`@relation(${relArgs.join(', ')})`],
     })
 
-    // back-relation (on the referenced table)
+    // back-relation (on the referenced table): a list is plural (`posts`), a one-to-one is a single (`profile`)
     const oneToOne = isOneToOne(source.table, col)
-    const backBase = ambiguous ? `${toCamel(source.name)}By${toPascal(forwardName)}` : toCamel(source.name)
+    const backRoot = oneToOne ? toCamel(source.name) : pluralizeName(toCamel(source.name))
+    const backBase = ambiguous ? `${backRoot}By${toPascal(forwardName)}` : backRoot
     target.fields.push({
       name: unique(backBase, target.fieldNames),
       type: source.name,
@@ -239,6 +278,14 @@ export function generatePrisma(diagram: Diagram): GenerateResult {
       list: !oneToOne,
       attrs: relName ? [`@relation(${q(relName)})`] : [],
     })
+
+    // PostgreSQL and SQLite don't index a foreign key by themselves (MySQL does), so joins and cascading deletes
+    // would scan the whole table. Skip it when the column is already covered by the primary key or a unique.
+    if (provider !== 'mysql') {
+      const pks = source.table.columns.filter((c) => c.primaryKey)
+      const covered = col.unique || (col.primaryKey && pks[0]?.id === col.id)
+      if (!covered) source.indexAttrs.push(`@@index([${fkField}])`)
+    }
   }
 
   // ---- Pass 3: many-to-many (implicit relations) ------------------------------------------
@@ -254,8 +301,9 @@ export function generatePrisma(diagram: Diagram): GenerateResult {
       continue
     }
     const relName = unique(`${a.name}To${b.name}`, relNames)
-    const aField = unique(`${toCamel(b.name)}${a === b ? 'A' : 's'}`, a.fieldNames)
-    const bField = unique(`${toCamel(a.name)}${a === b ? 'B' : 's'}`, b.fieldNames)
+    // `tags` on Post, `posts` on Tag. A table related to itself needs two different names (`usersA`, `usersB`).
+    const aField = unique(`${pluralizeName(toCamel(b.name))}${a === b ? 'A' : ''}`, a.fieldNames)
+    const bField = unique(`${pluralizeName(toCamel(a.name))}${a === b ? 'B' : ''}`, b.fieldNames)
     a.fields.push({
       name: aField,
       type: b.name,
@@ -274,6 +322,10 @@ export function generatePrisma(diagram: Diagram): GenerateResult {
 
   // ---- Render -----------------------------------------------------------------------------
   const out: string[] = [
+    '// Prisma schema generated by erd.designer.',
+    '// Prisma 7 keeps the database URL out of this file: set it in prisma.config.ts (datasource.url = env("DATABASE_URL")).',
+    ...warnings.map((w) => `// Note: ${w}`),
+    '',
     'generator client {',
     '  provider = "prisma-client"',
     '  output   = "../generated/prisma"',
@@ -297,7 +349,8 @@ export function generatePrisma(diagram: Diagram): GenerateResult {
       ]
       out.push(`  ${line.join(' ')}`.trimEnd())
     })
-    if (d.blockAttrs.length) out.push('', ...d.blockAttrs.map((a) => `  ${a}`))
+    const blockAttrs = [...d.idAttrs, ...[...new Set(d.indexAttrs)], ...(d.mapAttr ? [d.mapAttr] : [])]
+    if (blockAttrs.length) out.push('', ...blockAttrs.map((a) => `  ${a}`))
     out.push('}')
   }
 
