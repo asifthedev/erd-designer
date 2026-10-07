@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
+import { generateDrizzle } from '../core/drizzle'
 import { generatePrisma } from '../core/prisma'
 import { generateSql } from '../core/sql'
 import { toDiagram, useStore, type CodeFormat } from '../store'
@@ -16,6 +17,20 @@ const TOKEN_CLASS = [
   'text-num', // number
 ]
 
+// TypeScript (Drizzle) schema: comments, strings, keywords, Drizzle helpers, column modifiers, numbers.
+const TS_TOKEN =
+  /(\/\/.*)|('(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|\b(import|export|const|from|type|typeof)\b|\b(pgTable|mysqlTable|sqliteTable|pgEnum|mysqlEnum|relations|one|many|sql|customType|primaryKey)\b|(\.(?:references|notNull|unique|default|defaultNow|defaultRandom|array|autoincrement|primaryKey)\b)|\b(\d+)\b/g
+
+const TS_TOKEN_CLASS = [
+  '',
+  'text-muted italic', // comment
+  'text-ok', // string
+  'text-key font-semibold', // keyword
+  'text-key', // drizzle helper
+  'text-num', // column modifier
+  'text-num', // number
+]
+
 const SQL_TOKEN =
   /(--.*)|('(?:[^']|'')*')|("(?:[^"]|"")*"|`(?:[^`]|``)*`)|\b(CREATE|TABLE|TYPE|AS|ENUM|NOT|NULL|DEFAULT|PRIMARY|KEY|UNIQUE|CONSTRAINT|FOREIGN|REFERENCES|ON|DELETE|UPDATE|CASCADE|SET|RESTRICT|NO|ACTION|ALTER|ADD|AUTOINCREMENT|AUTO_INCREMENT|CHECK|IN|CURRENT_TIMESTAMP|TRUE|FALSE|UNSIGNED)\b|\b(INTEGER|INT|SMALLINT|TINYINT|MEDIUMINT|BIGINT|SERIAL|BIGSERIAL|VARCHAR|CHAR|TEXT|MEDIUMTEXT|LONGTEXT|UUID|BOOLEAN|NUMERIC|DECIMAL|FLOAT|REAL|DOUBLE|PRECISION|DATE|TIME|TIMESTAMP|TIMESTAMPTZ|DATETIME|JSON|JSONB|BYTEA|BLOB)\b|\b(\d+)\b/g
 
@@ -30,8 +45,8 @@ const SQL_TOKEN_CLASS = [
 ]
 
 function highlight(line: string, format: CodeFormat): ReactNode[] {
-  const token = format === 'sql' ? SQL_TOKEN : TOKEN
-  const classes = format === 'sql' ? SQL_TOKEN_CLASS : TOKEN_CLASS
+  const token = format === 'sql' ? SQL_TOKEN : format === 'drizzle' ? TS_TOKEN : TOKEN
+  const classes = format === 'sql' ? SQL_TOKEN_CLASS : format === 'drizzle' ? TS_TOKEN_CLASS : TOKEN_CLASS
   const parts: ReactNode[] = []
   let last = 0
   for (const m of line.matchAll(token)) {
@@ -62,9 +77,10 @@ export function PrismaPanel() {
   // Only the visible format is generated. The SQL follows the selected database.
   const schema = useMemo(() => {
     const diagram = toDiagram(provider, nodes, manyToMany)
-    return format === 'sql' ? generateSql(diagram).sql : generatePrisma(diagram).schema
+    if (format === 'sql') return generateSql(diagram).sql
+    return format === 'drizzle' ? generateDrizzle(diagram).schema : generatePrisma(diagram).schema
   }, [provider, nodes, manyToMany, format])
-  const filename = format === 'sql' ? 'schema.sql' : 'schema.prisma'
+  const filename = { prisma: 'schema.prisma', drizzle: 'schema.ts', sql: 'schema.sql' }[format]
 
   // The schema ends with a newline; don't number the empty "line" after it.
   const lines = useMemo(() => schema.replace(/\n$/, '').split('\n'), [schema])
@@ -120,6 +136,7 @@ export function PrismaPanel() {
         {(
           [
             ['prisma', 'Prisma'],
+            ['drizzle', 'Drizzle'],
             ['sql', `SQL · ${PROVIDER_LABEL[provider]}`],
           ] as const
         ).map(([value, label]) => (

@@ -170,7 +170,7 @@ function plainIntType(type: string): string {
  * Many-to-many links become explicit junction tables (SQL has no hidden join table like Prisma's implicit
  * relations): two foreign keys that together form the primary key.
  */
-function withJunctionTables(diagram: Diagram, warnings: string[]): Table[] {
+export function withJunctionTables(diagram: Diagram, warnings: string[]): Table[] {
   const tables = [...diagram.tables]
   const taken = new Set(tables.map((t) => t.name))
   const singlePk = (t: Table) => {

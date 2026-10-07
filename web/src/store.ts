@@ -14,7 +14,7 @@ import {
   type Table,
 } from './core/model'
 
-export type CodeFormat = 'prisma' | 'sql'
+export type CodeFormat = 'prisma' | 'drizzle' | 'sql'
 
 /** What is saved to the account: the diagram model plus where each table sits on the canvas. */
 export type Workspace = {
@@ -71,6 +71,8 @@ type State = {
   setSelectedColumn: (c: { tableId: string; columnId: string } | null) => void
   /** Whether the schema.prisma side panel is shown. */
   codeOpen: boolean
+  /** The left sidebar listing the account's ERDs is expanded. */
+  listOpen: boolean
   /** Which export the code panel shows. */
   codeFormat: CodeFormat
   setCodeFormat: (f: CodeFormat) => void
@@ -108,6 +110,7 @@ type State = {
   /** Replace a many-to-many link by an explicit junction table with two foreign keys. */
   convertToJunction: (id: string) => void
   toggleCode: () => void
+  toggleList: () => void
   /** Close the whole side panel: the code view and the relation settings. */
   closeSidebar: () => void
   setSidebarWidth: (w: number) => void
@@ -335,6 +338,7 @@ export const useStore = create<State>()(
       clipboardIsCut: false,
       flashing: [],
       codeOpen: true,
+      listOpen: true,
       codeFormat: 'prisma',
       sidebarWidth: 420,
       selectedEdgeId: null,
@@ -643,6 +647,7 @@ export const useStore = create<State>()(
       setCodeFormat: (codeFormat) => set({ codeFormat }),
       closeSidebar: () => set({ codeOpen: false, selectedEdgeId: null }),
       toggleCode: () => set((s) => ({ codeOpen: !s.codeOpen })),
+      toggleList: () => set((s) => ({ listOpen: !s.listOpen })),
       copyTables: (ids) => {
         const picked = get().nodes.filter((n) => ids.includes(n.id))
         if (!picked.length) return
@@ -721,6 +726,7 @@ export const useStore = create<State>()(
         nodes: s.nodes,
         manyToMany: s.manyToMany,
         codeOpen: s.codeOpen,
+        listOpen: s.listOpen,
         codeFormat: s.codeFormat,
         sidebarWidth: s.sidebarWidth,
       }),

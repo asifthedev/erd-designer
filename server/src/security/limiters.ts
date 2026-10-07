@@ -75,3 +75,14 @@ export const saveLimiter = rateLimit({
   message: tooMany('Saving too fast. Try again in a moment.'),
   validate: { keyGeneratorIpFallback: false },
 })
+
+/** Creating diagrams: each row is storage, so keep bulk creation in check (the per-user cap is the hard limit). */
+export const createLimiter = rateLimit({
+  ...common,
+  windowMs: 10 * 60_000,
+  limit: 30,
+  keyGenerator: (req) => `user:${req.user?.id ?? ip(req)}`,
+  store: new PgStore('create'),
+  message: tooMany('Creating diagrams too fast. Try again in a few minutes.'),
+  validate: { keyGeneratorIpFallback: false },
+})

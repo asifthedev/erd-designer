@@ -1,8 +1,8 @@
 # erd-designer
 
-A visual database designer. Drag tables onto a canvas, draw relations, and get **Prisma schema** and **SQL**
-(PostgreSQL / MySQL / SQLite) generated live. Sign in to have your diagram saved to your account and
-restored on any device.
+A visual database designer. Drag tables onto a canvas, draw relations, and get a **Prisma schema**, a **Drizzle ORM
+schema** and **SQL** (PostgreSQL / MySQL / SQLite) generated live. Sign in to keep **several ERDs** in your account (listed in a collapsible
+left sidebar) and open them on any device.
 
 ## Repository layout
 
@@ -62,7 +62,7 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) does exactly this on
 - **Rate limiting** (shared across serverless instances through PostgreSQL):
   sign-ups 5/hour/IP (successful ones count, so bots can't farm accounts); failed logins 15 per 15 min per IP
   *and* 20 per 15 min per account (stops one-IP brute force and distributed attacks on one victim);
-  saves 60/min/user; coarse 300 req/min/IP for everything else.
+  saves 60/min/user; new diagrams 30 per 10 min/user (and 50 per account); coarse 300 req/min/IP for everything else.
 - **Input limits**: strict Zod validation everywhere, 16 KB body cap on auth endpoints, 2 MB on authenticated saves
   (the body is only read after authentication). All queries go through Prisma (parameterised).
 - **Headers**: `helmet` on the API; HSTS, CSP (`script-src 'self'`), `X-Frame-Options: DENY`, `nosniff`,

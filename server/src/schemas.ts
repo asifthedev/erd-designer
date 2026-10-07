@@ -76,3 +76,18 @@ export const diagramSchema = z.object({
 })
 
 export type DiagramPayload = z.infer<typeof diagramSchema>
+
+// ---- Saved diagrams (a user can keep several) -------------------------------------------------------
+export const MAX_DIAGRAMS_PER_USER = 50
+const title = z.string().trim().min(1, 'Give the diagram a name').max(100, 'Use at most 100 characters')
+
+/** POST /diagrams: both fields optional, so "New ERD" can create a blank one. */
+export const createDiagramSchema = z.object({ title: title.optional(), data: diagramSchema.optional() })
+
+/** PUT /diagrams/:id: rename, save the content, or both in one request. */
+export const updateDiagramSchema = z
+  .object({ title: title.optional(), data: diagramSchema.optional() })
+  .refine((v) => v.title !== undefined || v.data !== undefined, { message: 'Nothing to update' })
+
+/** What a brand-new diagram contains. */
+export const BLANK_DIAGRAM: DiagramPayload = { provider: 'postgresql', nodes: [], manyToMany: [] }

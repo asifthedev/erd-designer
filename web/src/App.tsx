@@ -6,12 +6,13 @@ import {
   Background,
   BackgroundVariant,
   MiniMap,
+  Panel,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
   type EdgeChange,
 } from '@xyflow/react'
-import { Table2 } from 'lucide-react'
+import { PanelLeftOpen, Table2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { DbIcon } from './components/DbIcon'
 import { Select } from './components/Select'
@@ -19,6 +20,7 @@ import { useAuth } from '@/auth/store'
 import { useAutosave } from '@/auth/useAutosave'
 import { AuthScreen } from '@/components/AuthScreen'
 import { ClearAllToasts } from '@/components/ClearAllToasts'
+import { DiagramSidebar } from '@/components/DiagramSidebar'
 import { UserMenu } from '@/components/UserMenu'
 import { Toaster } from '@/components/ui/sonner'
 import { ZoomBar } from './components/ZoomBar'
@@ -54,8 +56,19 @@ function Canvas() {
   const duplicateTables = useStore((s) => s.duplicateTables)
   const pasteTables = useStore((s) => s.pasteTables)
   const hasClipboard = useStore((s) => s.clipboard !== null)
-  const { screenToFlowPosition } = useReactFlow()
+  const { screenToFlowPosition, fitView } = useReactFlow()
+  const authed = useAuth((s) => s.status === 'authed')
+  const currentId = useAuth((s) => s.currentId)
+  const listOpen = useStore((s) => s.listOpen)
+  const toggleList = useStore((s) => s.toggleList)
   const [showGrid, setShowGrid] = useState(true)
+
+  // Another ERD was opened: show it from its top left at 100% instead of wherever the last one was panned to.
+  useEffect(() => {
+    if (!currentId) return
+    const frame = requestAnimationFrame(() => void fitView({ minZoom: 1, maxZoom: 1, duration: 0 }))
+    return () => cancelAnimationFrame(frame)
+  }, [currentId, fitView])
   const [menu, setMenu] = useState<MenuTarget | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
 
@@ -228,6 +241,20 @@ function Canvas() {
         {showGrid && (
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--color-dot)" />
         )}
+        {authed && !listOpen && (
+          // Opens the list of ERDs. Lives on the canvas (not in the header); once open, the list has its own close button.
+          <Panel position="top-left">
+            <button
+              type="button"
+              onClick={toggleList}
+              title="Show your ERDs"
+              aria-label="Show the list of ERDs"
+              className="grid size-9 cursor-pointer place-items-center rounded-md border border-line bg-surface text-ink shadow-lg shadow-black/30 hover:border-key hover:text-key"
+            >
+              <PanelLeftOpen size={18} />
+            </button>
+          </Panel>
+        )}
         <ZoomBar showGrid={showGrid} onToggleGrid={() => setShowGrid((g) => !g)} />
         <MiniMap pannable zoomable nodeColor="#313745" />
       </ReactFlow>
@@ -363,6 +390,9 @@ function Editor() {
   const sidebarWidth = useStore((s) => s.sidebarWidth)
   const hasRelation = useStore((s) => s.selectedEdgeId !== null)
   const closeSidebar = useStore((s) => s.closeSidebar)
+  const listOpen = useStore((s) => s.listOpen)
+  const authed = useAuth((s) => s.status === 'authed')
+  const showList = listOpen && authed // guests have a single local workspace, so no list
   useAutosave()
 
   // The side panel (code view or relation settings) closes as soon as the canvas is clicked. Not for:
@@ -381,6 +411,7 @@ function Editor() {
         <div className="flex h-full flex-col bg-canvas font-ui text-ink">
           <Toolbar />
           <div className="flex min-h-0 flex-1">
+            {showList && <DiagramSidebar />}
             <main className="min-w-0 flex-1" onPointerDownCapture={closeOnCanvasClick}>
               <Canvas />
             </main>

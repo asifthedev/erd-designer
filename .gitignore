@@ -25,3 +25,4 @@ server/generated
 .DS_Store
 *.log
 *.local
+.drizzle-test

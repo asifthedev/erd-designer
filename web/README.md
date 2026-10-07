@@ -4,7 +4,7 @@ The erd-designer front end: React 19, Vite, Tailwind 4, [React Flow](https://rea
 
 ```
 src/
-  core/         Pure, framework-free logic (model types, SQL / Prisma generation, relations) + unit tests
+  core/         Pure, framework-free logic (model types, SQL / Prisma / Drizzle generation, relations) + unit tests
   components/   Canvas nodes/edges, panels, menus, shadcn/ui primitives (components/ui)
   auth/         API client, auth store, autosave hook
   store.ts      Single Zustand store: tables, relations, selection, undo-friendly actions

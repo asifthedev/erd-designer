@@ -211,54 +211,136 @@ describe.skipIf(!hasDb)('API (integration, real PostgreSQL)', () => {
     })
   })
 
-  describe('saved diagram', () => {
-    it('requires a session', async () => {
-      expect((await request(app).get('/api/diagram')).status).toBe(401)
-      expect((await request(app).put('/api/diagram').send(diagram)).status).toBe(401)
+  describe('saved diagrams (several per user)', () => {
+    type Auth = Awaited<ReturnType<typeof signUp>>
+    const create = (u: Auth, body: object = {}) => request(app).post('/api/diagrams').set('Cookie', u.cookie).send(body)
+    const put = (u: Auth, id: string, body: object) => request(app).put(`/api/diagrams/${id}`).set('Cookie', u.cookie).send(body)
+
+    it('requires a session for every endpoint', async () => {
+      const id = '00000000-0000-4000-8000-000000000000'
+      expect((await request(app).get('/api/diagrams')).status).toBe(401)
+      expect((await request(app).post('/api/diagrams').send({})).status).toBe(401)
+      expect((await request(app).get(`/api/diagrams/${id}`)).status).toBe(401)
+      expect((await request(app).put(`/api/diagrams/${id}`).send({ data: diagram })).status).toBe(401)
+      expect((await request(app).delete(`/api/diagrams/${id}`)).status).toBe(401)
     })
 
-    it('saves, updates and returns the workspace', async () => {
-      const { cookie } = await signUp()
-      expect((await request(app).get('/api/diagram').set('Cookie', cookie)).body.data).toBeNull()
-      expect((await request(app).put('/api/diagram').set('Cookie', cookie).send(diagram)).status).toBe(200)
-      const got = await request(app).get('/api/diagram').set('Cookie', cookie)
-      expect(got.body.data.nodes[0].data.name).toBe('users')
-      const renamed = structuredClone(diagram)
-      renamed.nodes[0].data.name = 'accounts'
-      await request(app).put('/api/diagram').set('Cookie', cookie).send(renamed)
-      expect((await request(app).get('/api/diagram').set('Cookie', cookie)).body.data.nodes[0].data.name).toBe('accounts')
-      expect(await prisma.diagram.count()).toBe(1)
+    it('creates diagrams, lists them oldest first, and returns content only when one is opened', async () => {
+      const u = await signUp()
+      expect((await request(app).get('/api/diagrams').set('Cookie', u.cookie)).body.diagrams).toEqual([])
+
+      const first = await create(u, { title: '  Shop  ', data: diagram })
+      expect(first.status).toBe(201)
+      expect(first.body.diagram.title).toBe('Shop')
+      const blank = await create(u) // no body: a blank, untitled one
+      expect(blank.body.diagram.title).toBe('Untitled diagram')
+
+      const list = await request(app).get('/api/diagrams').set('Cookie', u.cookie)
+      expect(list.body.diagrams.map((d: { title: string }) => d.title)).toEqual(['Shop', 'Untitled diagram'])
+      expect(JSON.stringify(list.body)).not.toContain('nodes') // the list never carries the (large) content
+
+      const opened = await request(app).get(`/api/diagrams/${first.body.diagram.id}`).set('Cookie', u.cookie)
+      expect(opened.body.diagram.data.nodes[0].data.name).toBe('users')
+      const emptyOne = await request(app).get(`/api/diagrams/${blank.body.diagram.id}`).set('Cookie', u.cookie)
+      expect(emptyOne.body.diagram.data).toEqual({ provider: 'postgresql', nodes: [], manyToMany: [] })
     })
 
-    it("never lets one user read or overwrite another's diagram", async () => {
+    it('saves content, renames, or both; an empty update is rejected', async () => {
+      const u = await signUp()
+      const { id } = (await create(u, { title: 'A' })).body.diagram
+      expect((await put(u, id, { data: diagram })).status).toBe(200)
+      const renamed = await put(u, id, { title: 'B' })
+      expect(renamed.status).toBe(200)
+      expect(renamed.body.title).toBe('B')
+      const both = structuredClone(diagram)
+      both.nodes[0].data.name = 'accounts'
+      expect((await put(u, id, { title: 'C', data: both })).status).toBe(200)
+
+      const got = (await request(app).get(`/api/diagrams/${id}`).set('Cookie', u.cookie)).body.diagram
+      expect(got.title).toBe('C')
+      expect(got.data.nodes[0].data.name).toBe('accounts')
+      expect((await put(u, id, {})).status).toBe(400)
+      expect((await put(u, id, { title: '   ' })).status).toBe(400)
+      expect((await put(u, id, { title: 'x'.repeat(101) })).status).toBe(400)
+    })
+
+    it('deletes one diagram and leaves the others', async () => {
+      const u = await signUp()
+      const a = (await create(u, { title: 'A' })).body.diagram.id
+      const b = (await create(u, { title: 'B' })).body.diagram.id
+      expect((await request(app).delete(`/api/diagrams/${a}`).set('Cookie', u.cookie)).status).toBe(204)
+      expect((await request(app).get(`/api/diagrams/${a}`).set('Cookie', u.cookie)).status).toBe(404)
+      expect((await request(app).get(`/api/diagrams/${b}`).set('Cookie', u.cookie)).status).toBe(200)
+      expect((await request(app).delete(`/api/diagrams/${a}`).set('Cookie', u.cookie)).status).toBe(404) // already gone
+    })
+
+    it("never lets one user read, overwrite, rename or delete another's diagram", async () => {
       const a = await signUp()
       const b = await signUp()
-      await request(app).put('/api/diagram').set('Cookie', a.cookie).send(diagram)
-      expect((await request(app).get('/api/diagram').set('Cookie', b.cookie)).body.data).toBeNull()
-      // A userId smuggled into the body must be ignored.
-      await request(app).put('/api/diagram').set('Cookie', b.cookie).send({ ...diagram, userId: a.user.id })
-      const a2 = await request(app).get('/api/diagram').set('Cookie', a.cookie)
-      expect(a2.body.data.nodes[0].data.name).toBe('users')
-      expect(await prisma.diagram.count()).toBe(2)
+      const id = (await create(a, { title: 'Secret', data: diagram })).body.diagram.id
+
+      expect((await request(app).get('/api/diagrams').set('Cookie', b.cookie)).body.diagrams).toEqual([])
+      expect((await request(app).get(`/api/diagrams/${id}`).set('Cookie', b.cookie)).status).toBe(404)
+      expect((await put(b, id, { title: 'Hacked' })).status).toBe(404)
+      expect((await put(b, id, { data: { ...diagram, nodes: [] } })).status).toBe(404)
+      expect((await request(app).delete(`/api/diagrams/${id}`).set('Cookie', b.cookie)).status).toBe(404)
+      // a userId smuggled into the body is ignored
+      const mine = (await create(b, { title: 'Mine', userId: a.user.id })).body.diagram.id
+      expect((await request(app).get(`/api/diagrams/${mine}`).set('Cookie', a.cookie)).status).toBe(404)
+
+      const still = (await request(app).get(`/api/diagrams/${id}`).set('Cookie', a.cookie)).body.diagram
+      expect(still.title).toBe('Secret')
+      expect(still.data.nodes).toHaveLength(1)
+    })
+
+    it('answers 404 (not 500) for ids that are not UUIDs', async () => {
+      const u = await signUp()
+      for (const bad of ['nope', '1', "'; DROP TABLE erd_diagrams; --", '%00', 'x'.repeat(500)]) {
+        expect((await request(app).get(`/api/diagrams/${encodeURIComponent(bad)}`).set('Cookie', u.cookie)).status).toBe(404)
+        expect((await put(u, encodeURIComponent(bad), { title: 'x' })).status).toBe(404)
+        expect((await request(app).delete(`/api/diagrams/${encodeURIComponent(bad)}`).set('Cookie', u.cookie)).status).toBe(404)
+      }
+    })
+
+    it('caps how many diagrams one user can keep', async () => {
+      const u = await signUp()
+      await prisma.diagram.createMany({
+        data: Array.from({ length: 50 }, (_, i) => ({ userId: u.user.id, title: `d${i}`, data: diagram })),
+      })
+      const over = await create(u, { title: 'one too many' })
+      expect(over.status).toBe(409)
+      expect(over.body.error).toMatch(/50/)
+      expect(await prisma.diagram.count({ where: { userId: u.user.id } })).toBe(50)
     })
 
     it('rejects invalid shapes and oversized bodies', async () => {
-      const { cookie } = await signUp()
-      const put = (body: unknown) => request(app).put('/api/diagram').set('Cookie', cookie).send(body as object)
-      expect((await put({ provider: 'oracle', nodes: [], manyToMany: [] })).status).toBe(400)
-      expect((await put({ provider: 'postgresql', nodes: 'x', manyToMany: [] })).status).toBe(400)
-      expect((await put({})).status).toBe(400)
-      const huge = { ...diagram, junk: 'x'.repeat(3 * 1024 * 1024) }
-      expect((await put(huge)).status).toBe(413)
+      const u = await signUp()
+      const { id } = (await create(u)).body.diagram
+      expect((await put(u, id, { data: { provider: 'oracle', nodes: [], manyToMany: [] } })).status).toBe(400)
+      expect((await put(u, id, { data: { provider: 'postgresql', nodes: 'x', manyToMany: [] } })).status).toBe(400)
+      expect((await create(u, { data: { nope: true } })).status).toBe(400)
+      expect((await put(u, id, { data: diagram, junk: 'x'.repeat(3 * 1024 * 1024) })).status).toBe(413)
+    })
+
+    it('deleting an account-less row cascade: removing a user removes their diagrams', async () => {
+      const u = await signUp()
+      await create(u, { title: 'A' })
+      await prisma.user.delete({ where: { id: u.user.id } })
+      expect(await prisma.diagram.count({ where: { userId: u.user.id } })).toBe(0)
     })
   })
 
   describe('CSRF / origin checks', () => {
     it('refuses writes from a foreign or null origin, even with a valid cookie', async () => {
       const { cookie } = await signUp()
+      const { id } = (await request(app).post('/api/diagrams').set('Cookie', cookie).send({})).body.diagram
       for (const origin of ['https://evil.example', 'null']) {
-        const res = await request(app).put('/api/diagram').set('Cookie', cookie).set('Origin', origin).send(diagram)
+        const res = await request(app).put(`/api/diagrams/${id}`).set('Cookie', cookie).set('Origin', origin).send({ data: diagram })
         expect(res.status).toBe(403)
+        const made = await request(app).post('/api/diagrams').set('Cookie', cookie).set('Origin', origin).send({})
+        expect(made.status).toBe(403)
+        const gone = await request(app).delete(`/api/diagrams/${id}`).set('Cookie', cookie).set('Origin', origin)
+        expect(gone.status).toBe(403)
       }
       const logout = await request(app).post('/api/auth/logout').set('Cookie', cookie).set('Origin', 'https://evil.example')
       expect(logout.status).toBe(403)
@@ -267,9 +349,10 @@ describe.skipIf(!hasDb)('API (integration, real PostgreSQL)', () => {
 
     it('allows the API own origin and configured dev origins', async () => {
       const { cookie } = await signUp()
-      const own = await request(app).put('/api/diagram').set('Cookie', cookie).set('Host', 'erd.example.com').set('Origin', 'https://erd.example.com').send(diagram)
+      const { id } = (await request(app).post('/api/diagrams').set('Cookie', cookie).send({})).body.diagram
+      const own = await request(app).put(`/api/diagrams/${id}`).set('Cookie', cookie).set('Host', 'erd.example.com').set('Origin', 'https://erd.example.com').send({ data: diagram })
       expect(own.status).toBe(200)
-      const dev = await request(app).put('/api/diagram').set('Cookie', cookie).set('Origin', 'http://localhost:5173').send(diagram)
+      const dev = await request(app).put(`/api/diagrams/${id}`).set('Cookie', cookie).set('Origin', 'http://localhost:5173').send({ data: diagram })
       expect(dev.status).toBe(200)
     })
   })
@@ -317,9 +400,18 @@ describe.skipIf(!hasDb)('API (integration, real PostgreSQL)', () => {
 
     it('throttles save spam per user', async () => {
       const { cookie } = await signUp()
+      const { id } = (await request(app).post('/api/diagrams').set('Cookie', cookie).send({})).body.diagram
       let last = 0
-      for (let i = 0; i < 62; i++) last = (await request(app).put('/api/diagram').set('Cookie', cookie).send(diagram)).status
+      for (let i = 0; i < 62; i++) last = (await request(app).put(`/api/diagrams/${id}`).set('Cookie', cookie).send({ data: diagram })).status
       expect(last).toBe(429)
+    }, 60_000)
+
+    it('throttles bulk diagram creation per user', async () => {
+      const { cookie } = await signUp()
+      const statuses: number[] = []
+      for (let i = 0; i < 32; i++) statuses.push((await request(app).post('/api/diagrams').set('Cookie', cookie).send({})).status)
+      expect(statuses.slice(0, 30).every((s) => s === 201)).toBe(true)
+      expect(statuses.slice(30)).toEqual([429, 429]) // 30 per 10 minutes, well below the 50-diagram cap
     }, 60_000)
   })
 })

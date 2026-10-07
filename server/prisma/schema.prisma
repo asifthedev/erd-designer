@@ -18,7 +18,7 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
 
   sessions Session[]
-  diagram  Diagram?
+  diagrams Diagram[]
 
   @@map("erd_users")
 }
@@ -38,16 +38,18 @@ model Session {
   @@map("erd_sessions")
 }
 
-/// One saved workspace per user: the diagram model (tables, columns, relations, canvas positions) as JSON.
+/// One saved ERD (tables, columns, relations, canvas positions as JSON). A user can have several.
 model Diagram {
   id        String   @id @default(uuid())
-  userId    String   @unique @map("user_id")
+  userId    String   @map("user_id")
+  title     String   @default("Untitled diagram")
   data      Json
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId, createdAt])
   @@map("erd_diagrams")
 }
 
