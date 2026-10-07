@@ -134,30 +134,77 @@ function makeNode(table: Table, position: { x: number; y: number }): TableNodeTy
   return { id: table.id, type: 'table', position, data: table }
 }
 
-function sampleNodes(): TableNodeType[] {
+/**
+ * The starter workspace a new user lands on: a small blog (users, posts, comments, tags) that shows the main
+ * features at a glance: primary keys, unique / not-null flags, defaults, foreign keys with ON DELETE actions,
+ * a many-to-many link, and per-table icons.
+ */
+function sampleWorkspace(): { nodes: TableNodeType[]; manyToMany: ManyToMany[] } {
+  const pk = (): Column => ({ ...newColumn('id', 'SERIAL'), primaryKey: true, notNull: true })
   const users: Table = {
     id: uid(),
     name: 'users',
+    icon: 'Users',
     columns: [
-      { ...newColumn('id', 'SERIAL'), primaryKey: true, notNull: true },
+      pk(),
       { ...newColumn('email', 'VARCHAR(255)'), notNull: true, unique: true },
+      newColumn('name', 'VARCHAR(100)'),
       { ...newColumn('created_at', 'TIMESTAMP'), notNull: true, default: 'now()' },
     ],
   }
   const posts: Table = {
     id: uid(),
     name: 'posts',
+    icon: 'FileText',
     columns: [
-      { ...newColumn('id', 'SERIAL'), primaryKey: true, notNull: true },
+      pk(),
       { ...newColumn('title', 'VARCHAR(200)'), notNull: true },
+      newColumn('body', 'TEXT'),
+      { ...newColumn('published', 'BOOLEAN'), notNull: true, default: 'false' },
       {
         ...newColumn('author_id', 'INT'),
         notNull: true,
         references: { tableId: users.id, columnId: users.columns[0].id, onDelete: 'CASCADE' },
       },
+      { ...newColumn('created_at', 'TIMESTAMP'), notNull: true, default: 'now()' },
     ],
   }
-  return [makeNode(users, { x: 0, y: 40 }), makeNode(posts, { x: 800, y: 0 })]
+  const comments: Table = {
+    id: uid(),
+    name: 'comments',
+    icon: 'MessageSquare',
+    columns: [
+      pk(),
+      { ...newColumn('body', 'TEXT'), notNull: true },
+      {
+        ...newColumn('post_id', 'INT'),
+        notNull: true,
+        references: { tableId: posts.id, columnId: posts.columns[0].id, onDelete: 'CASCADE' },
+      },
+      {
+        // Nullable on purpose: deleting a user keeps their comments (ON DELETE SET NULL).
+        ...newColumn('author_id', 'INT'),
+        references: { tableId: users.id, columnId: users.columns[0].id, onDelete: 'SET NULL' },
+      },
+    ],
+  }
+  const tags: Table = {
+    id: uid(),
+    name: 'tags',
+    icon: 'Tags',
+    columns: [pk(), { ...newColumn('name', 'VARCHAR(50)'), notNull: true, unique: true }],
+  }
+  return {
+    // Two columns, 780px apart (tables are ~680px wide), so nothing overlaps at 100% zoom.
+    nodes: [
+      makeNode(users, { x: 0, y: 0 }),
+      makeNode(posts, { x: 780, y: 0 }),
+      makeNode(comments, { x: 0, y: 440 }),
+      makeNode(tags, { x: 780, y: 440 }),
+    ],
+    // A post has many tags and a tag many posts (Prisma emits an implicit relation).
+    manyToMany: [{ id: uid(), aTableId: posts.id, bTableId: tags.id }],
+  }
 }
 
 /** Apply `fn` to one table's data, leaving every other node untouched. */
@@ -282,8 +329,7 @@ export const useStore = create<State>()(
   persist(
     (set, get) => ({
       provider: 'postgresql',
-      nodes: sampleNodes(),
-      manyToMany: [],
+      ...sampleWorkspace(),
       pendingM2m: null,
       selectedColumn: null,
       clipboard: null,
@@ -665,7 +711,7 @@ export const useStore = create<State>()(
           selectedColumn: null,
           pendingM2m: null,
         }),
-      loadSample: () => set({ nodes: sampleNodes(), manyToMany: [], selectedEdgeId: null }),
+      loadSample: () => set({ ...sampleWorkspace(), selectedEdgeId: null }),
       clear: () => set({ nodes: [], manyToMany: [], selectedEdgeId: null }),
     }),
     {

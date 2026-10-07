@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Column, Diagram } from './model'
 import { generatePrisma } from './prisma'
-import { checkRelations, sqlTypeMismatch } from './relations'
+import { checkRelations, isInvalid, sqlTypeMismatch } from './relations'
 import { generateSql } from './sql'
 import { parseSqlType, resolveSqlType } from './sqlType'
 
@@ -336,5 +336,20 @@ describe('generateSql', () => {
     const { sql } = generateSql(diagram('postgresql'))
     expect(sql).toContain('CREATE TABLE "posts_tags"')
     expect(sql).toContain('PRIMARY KEY ("post_id", "tag_id")')
+  })
+})
+
+describe('starter workspace', () => {
+  it('is a valid diagram: no broken relations, SQL generates for every database', async () => {
+    const { useStore } = await import('../store')
+    useStore.getState().loadSample()
+    const { nodes, manyToMany } = useStore.getState()
+    expect(nodes.map((n) => n.data.name)).toEqual(['users', 'posts', 'comments', 'tags'])
+    expect(manyToMany).toHaveLength(1)
+    for (const provider of ['postgresql', 'mysql', 'sqlite'] as const) {
+      const diagram = { provider, tables: nodes.map((n) => n.data), manyToMany }
+      expect(checkRelations(diagram).filter(isInvalid)).toEqual([])
+      expect(generateSql(diagram).warnings).toEqual([])
+    }
   })
 })

@@ -11,6 +11,7 @@ import {
   useReactFlow,
   type EdgeChange,
 } from '@xyflow/react'
+import { Table2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { DbIcon } from './components/DbIcon'
 import { Select } from './components/Select'
@@ -220,7 +221,9 @@ function Canvas() {
         }}
         colorMode="dark"
         minZoom={0.2}
+        // Open at exactly 100%: fitView centres the tables, and min = max = 1 pins the zoom level.
         fitView
+        fitViewOptions={{ minZoom: 1, maxZoom: 1 }}
       >
         {showGrid && (
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--color-dot)" />
@@ -233,7 +236,7 @@ function Canvas() {
   )
 }
 
-/** Top bar: add / fit / sample / clear, the database dialect picker, the code toggle and the account menu. */
+/** Top bar: add table / sample / clear, the database dialect picker, the code toggle and the account menu. */
 function Toolbar() {
   const provider = useStore((s) => s.provider)
   const setProvider = useStore((s) => s.setProvider)
@@ -242,7 +245,7 @@ function Toolbar() {
   const clear = useStore((s) => s.clear)
   const codeOpen = useStore((s) => s.codeOpen)
   const toggleCode = useStore((s) => s.toggleCode)
-  const { screenToFlowPosition, fitView } = useReactFlow()
+  const { screenToFlowPosition } = useReactFlow()
 
   const btn =
     'cursor-pointer rounded-sm border border-line px-2.5 py-1 text-muted hover:border-key hover:text-key'
@@ -255,22 +258,20 @@ function Toolbar() {
       </h1>
       <button
         type="button"
-        className={btn}
-        onClick={() => {
-          // Drop the new table at the centre of what the user is looking at.
+        className={`${btn} flex items-center gap-1.5`}
+        title="Add a new table to the canvas"
+        onClick={() =>
+          // Drop the new table inside what the user is looking at, without changing the zoom level.
           addTable(
             screenToFlowPosition({
               x: window.innerWidth * 0.3,
               y: window.innerHeight * 0.3,
             }),
           )
-          requestAnimationFrame(() => fitView({ duration: 200, maxZoom: 1 }))
-        }}
+        }
       >
-        + Table
-      </button>
-      <button type="button" className={btn} onClick={() => fitView({ duration: 200, maxZoom: 1 })}>
-        Fit
+        <Table2 className="size-4" aria-hidden />
+        Add table
       </button>
       <button type="button" className={btn} onClick={loadSample}>
         Sample
