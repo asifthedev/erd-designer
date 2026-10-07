@@ -26,13 +26,14 @@ export const globalLimiter = rateLimit({
 })
 
 /**
- * Sign-up counts EVERY attempt (successful too): otherwise a bot could mint unlimited accounts.
- * 5 new accounts per hour per IP is generous for humans and useless for spam.
+ * Counts accounts actually CREATED (successful sign-ups): 5 per hour per IP is generous for humans and useless for
+ * spam. Failed attempts (wrong code...) are limited separately by the code's own guesses and `verifyLimiter`.
  */
 export const signupLimiter = rateLimit({
   ...common,
   windowMs: 60 * 60_000,
   limit: 5,
+  skipFailedRequests: true,
   keyGenerator: ip,
   store: new PgStore('signup'),
   message: tooMany('Too many sign-ups from this network. Try again later.'),
@@ -85,4 +86,36 @@ export const createLimiter = rateLimit({
   store: new PgStore('create'),
   message: tooMany('Creating diagrams too fast. Try again in a few minutes.'),
   validate: { keyGeneratorIpFallback: false },
+})
+
+/** Asking for emails to be sent (codes): per network, 10 an hour, every request counted. */
+export const codeRequestIpLimiter = rateLimit({
+  ...common,
+  windowMs: 60 * 60_000,
+  limit: 10,
+  keyGenerator: ip,
+  store: new PgStore('code-ip'),
+  message: tooMany('Too many code requests from this network. Try again later.'),
+})
+
+/** ...and per address: 5 an hour for each kind of code, so nobody's inbox can be flooded. */
+export const codeRequestEmailLimiter = rateLimit({
+  ...common,
+  windowMs: 60 * 60_000,
+  limit: 5,
+  keyGenerator: (req) => `${req.path}:${String(req.body?.email ?? '').trim().toLowerCase().slice(0, 254)}`,
+  store: new PgStore('code-email'),
+  message: tooMany('Too many codes were requested for this address. Try again later.'),
+  validate: { keyGeneratorIpFallback: false },
+})
+
+/** Guessing codes: failed checks only, per network. (Each code also allows just 5 guesses in total.) */
+export const verifyLimiter = rateLimit({
+  ...common,
+  windowMs: 15 * 60_000,
+  limit: 20,
+  skipSuccessfulRequests: true,
+  keyGenerator: ip,
+  store: new PgStore('code-verify'),
+  message: tooMany('Too many wrong codes. Try again in a few minutes.'),
 })

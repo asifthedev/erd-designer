@@ -1,7 +1,8 @@
 import request from 'supertest'
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createApp } from './app'
 import { prisma } from './db'
+import { setMailer, type Mail } from './mail/mailer'
 
 const hasDb = Boolean(process.env.DATABASE_URL)
 const app = createApp()
@@ -13,10 +14,24 @@ const freshIp = () => `10.${Math.floor(++ipCounter / 65000)}.${Math.floor(ipCoun
 const PASSWORD = 'correct horse battery'
 const emailFor = (n: string) => `${n}-${Math.random().toString(36).slice(2, 8)}@example.com`
 
+// Every email the server would have sent, in order, instead of sending it.
+let outbox: Mail[] = []
+const mailsTo = (email: string) => outbox.filter((m) => m.to === email.trim().toLowerCase())
+/** The 6-digit code in the latest email to `email`. */
+const codeFor = (email: string) => /\b(\d{6})\b/.exec(mailsTo(email).at(-1)?.text ?? '')?.[1] ?? ''
+const post = (path: string, body: object, ip = freshIp()) => request(app).post(path).set('X-Forwarded-For', ip).send(body)
+const askSignupCode = (email: string, ip = freshIp()) => post('/api/auth/signup/code', { email }, ip)
+const askResetCode = (email: string, ip = freshIp()) => post('/api/auth/password/forgot', { email }, ip)
+/** Asks for a sign-up code and uses it: the way a real person signs up. */
+async function signUpWith(email: string, extra: object = {}, ip = freshIp()) {
+  expect((await askSignupCode(email, ip)).status).toBe(200)
+  return post('/api/auth/signup', { email, password: PASSWORD, code: codeFor(email), ...extra }, ip)
+}
+
 /** Signs up and returns the cookie + ip, ready for authenticated calls. */
 async function signUp(email = emailFor('user')) {
   const ip = freshIp()
-  const res = await request(app).post('/api/auth/signup').set('X-Forwarded-For', ip).send({ email, password: PASSWORD })
+  const res = await signUpWith(email, {}, ip)
   expect(res.status).toBe(201)
   const cookie = (res.headers['set-cookie'] as unknown as string[])[0].split(';')[0]
   return { email, cookie, ip, user: res.body.user }
@@ -41,13 +56,17 @@ const diagram = {
 }
 
 describe.skipIf(!hasDb)('API (integration, real PostgreSQL)', () => {
+  beforeAll(() => setMailer({ send: async (mail) => void outbox.push(mail) }))
   beforeEach(async () => {
+    outbox = []
+    await prisma.emailCode.deleteMany()
     await prisma.diagram.deleteMany()
     await prisma.session.deleteMany()
     await prisma.user.deleteMany()
     await prisma.rateLimit.deleteMany()
   })
   afterAll(async () => {
+    setMailer()
     await prisma.$disconnect()
   })
 
@@ -88,10 +107,7 @@ describe.skipIf(!hasDb)('API (integration, real PostgreSQL)', () => {
   describe('sign up', () => {
     it('creates an account, sets a hardened cookie, and never returns the hash', async () => {
       const email = emailFor('ada')
-      const res = await request(app)
-        .post('/api/auth/signup')
-        .set('X-Forwarded-For', freshIp())
-        .send({ email: email.toUpperCase(), password: PASSWORD, name: ' Ada ' })
+      const res = await signUpWith(email.toUpperCase(), { name: ' Ada ' })
       expect(res.status).toBe(201)
       expect(res.body.user).toMatchObject({ email, name: 'Ada' })
       expect(JSON.stringify(res.body)).not.toMatch(/hash|scrypt|password/i)
@@ -113,23 +129,19 @@ describe.skipIf(!hasDb)('API (integration, real PostgreSQL)', () => {
     })
 
     it('rejects weak input with a readable error', async () => {
-      const ip = freshIp()
-      const short = await request(app).post('/api/auth/signup').set('X-Forwarded-For', ip).send({ email: 'a@b.co', password: 'short' })
+      const short = await post('/api/auth/signup', { email: 'a@b.co', password: 'short', code: '123456' })
       expect(short.status).toBe(400)
       expect(short.body.field).toBe('password')
-      const bad = await request(app).post('/api/auth/signup').set('X-Forwarded-For', ip).send({ email: 'nope', password: PASSWORD })
+      const bad = await post('/api/auth/signup', { email: 'nope', password: PASSWORD, code: '123456' })
       expect(bad.status).toBe(400)
       expect(bad.body.field).toBe('email')
     })
 
-    it('answers 409 for a duplicate email, including two simultaneous sign-ups (no 500)', async () => {
+    it('answers 409 for two simultaneous sign-ups that use the same valid code (no 500)', async () => {
       const email = emailFor('dup')
-      const ipA = freshIp()
-      const ipB = freshIp()
-      const [a, b] = await Promise.all([
-        request(app).post('/api/auth/signup').set('X-Forwarded-For', ipA).send({ email, password: PASSWORD }),
-        request(app).post('/api/auth/signup').set('X-Forwarded-For', ipB).send({ email, password: PASSWORD }),
-      ])
+      await askSignupCode(email)
+      const body = { email, password: PASSWORD, code: codeFor(email) }
+      const [a, b] = await Promise.all([post('/api/auth/signup', body), post('/api/auth/signup', body)])
       expect([a.status, b.status].sort()).toEqual([201, 409])
       expect(await prisma.user.count({ where: { email } })).toBe(1)
     })
@@ -150,14 +162,266 @@ describe.skipIf(!hasDb)('API (integration, real PostgreSQL)', () => {
     })
 
     it('ignores prototype-pollution and mass-assignment attempts', async () => {
+      await askSignupCode('p@x.co')
       const res = await request(app)
         .post('/api/auth/signup')
         .set('X-Forwarded-For', freshIp())
         .set('Content-Type', 'application/json')
-        .send('{"email":"p@x.co","password":"correct horse battery","__proto__":{"admin":true},"id":"hacked","passwordHash":"x"}')
+        .send(`{"email":"p@x.co","password":"correct horse battery","code":"${codeFor('p@x.co')}","__proto__":{"admin":true},"id":"hacked","passwordHash":"x"}`)
       expect(res.status).toBe(201)
       expect(res.body.user.id).not.toBe('hacked')
       expect(({} as Record<string, unknown>).admin).toBeUndefined()
+    })
+  })
+
+  describe('email verification at sign-up', () => {
+    it('emails a 6-digit code to the address, and stores only a salted hash of it', async () => {
+      const email = emailFor('new')
+      expect((await askSignupCode(email)).status).toBe(200)
+      expect(mailsTo(email)).toHaveLength(1)
+      const code = codeFor(email)
+      expect(code).toMatch(/^\d{6}$/)
+      expect(mailsTo(email)[0].subject).toContain(code)
+      const row = await prisma.emailCode.findFirstOrThrow({ where: { email } })
+      expect(JSON.stringify(row)).not.toContain(code) // no plaintext code in the database
+      expect(row.codeHash).toMatch(/^[0-9a-f]{64}$/)
+      expect(row.expiresAt.getTime() - Date.now()).toBeLessThanOrEqual(10 * 60_000)
+    })
+
+    it('cannot register without the code', async () => {
+      const email = emailFor('nocode')
+      await askSignupCode(email)
+      for (const body of [{}, { code: '' }, { code: '12345' }, { code: 'abcdef' }, { code: '000000' }]) {
+        const res = await post('/api/auth/signup', { email, password: PASSWORD, ...body })
+        expect(res.status).toBe(400)
+        expect(res.body.field ?? 'code').toBe('code')
+      }
+      expect(await prisma.user.count({ where: { email } })).toBe(0)
+      expect((await post('/api/auth/signup', { email, password: PASSWORD, code: codeFor(email) })).status).toBe(201)
+    })
+
+    it('refuses a code that belongs to another address', async () => {
+      const mine = emailFor('mine')
+      const theirs = emailFor('theirs')
+      await askSignupCode(mine)
+      await askSignupCode(theirs)
+      const res = await post('/api/auth/signup', { email: theirs, password: PASSWORD, code: codeFor(mine) })
+      expect(res.status).toBe(400)
+      expect(await prisma.user.count()).toBe(0)
+    })
+
+    it('allows 5 guesses, then the code is dead even if the right one is typed', async () => {
+      const email = emailFor('guess')
+      await askSignupCode(email)
+      const right = codeFor(email)
+      const wrong = right === '123456' ? '654321' : '123456'
+      for (let i = 0; i < 5; i++) expect((await post('/api/auth/signup', { email, password: PASSWORD, code: wrong })).status).toBe(400)
+      expect((await post('/api/auth/signup', { email, password: PASSWORD, code: right })).status).toBe(400)
+      expect(await prisma.user.count()).toBe(0)
+    })
+
+    it('does not let parallel requests squeeze in extra guesses', async () => {
+      const email = emailFor('parallel')
+      await askSignupCode(email)
+      const right = codeFor(email)
+      const wrong = right === '123456' ? '654321' : '123456'
+      const wrongs = await Promise.all(Array.from({ length: 8 }, () => post('/api/auth/signup', { email, password: PASSWORD, code: wrong })))
+      expect(wrongs.every((r) => r.status === 400)).toBe(true)
+      expect((await post('/api/auth/signup', { email, password: PASSWORD, code: right })).status).toBe(400)
+    })
+
+    it('a code works once, and expires after 10 minutes', async () => {
+      const email = emailFor('once')
+      expect((await signUpWith(email)).status).toBe(201)
+      expect(await prisma.emailCode.count({ where: { email } })).toBe(0) // used up
+      const code = mailsTo(email).length ? codeFor(email) : ''
+      expect((await post('/api/auth/signup', { email, password: PASSWORD, code })).status).toBe(400)
+
+      const late = emailFor('late')
+      await askSignupCode(late)
+      await prisma.emailCode.updateMany({ where: { email: late }, data: { expiresAt: new Date(Date.now() - 1000) } })
+      expect((await post('/api/auth/signup', { email: late, password: PASSWORD, code: codeFor(late) })).status).toBe(400)
+      expect(await prisma.user.count({ where: { email: late } })).toBe(0)
+    })
+
+    it('tells nobody whether an address is registered: the same answer, and the owner gets an explanatory email instead of a code', async () => {
+      const { email: taken } = await signUp()
+      outbox = []
+      const fresh = emailFor('fresh')
+      const a = await askSignupCode(taken)
+      const b = await askSignupCode(fresh)
+      expect(a.status).toBe(b.status)
+      expect(a.body).toEqual(b.body)
+      expect(mailsTo(taken)[0].subject).toMatch(/already have/i)
+      expect(mailsTo(taken)[0].text).not.toMatch(/\b\d{6}\b/) // no code goes to a registered address
+      expect(mailsTo(fresh)[0].subject).toMatch(/verification code/i)
+      // the code that was never sent can't be guessed into an account takeover or a duplicate
+      expect((await post('/api/auth/signup', { email: taken, password: PASSWORD, code: '000000' })).status).toBe(400)
+    })
+
+    it('makes people wait between codes (the same for known and unknown addresses)', async () => {
+      const { email: taken } = await signUp()
+      const fresh = emailFor('cool')
+      outbox = []
+      for (const email of [taken, fresh]) {
+        expect((await askSignupCode(email)).status).toBe(200)
+        const again = await askSignupCode(email)
+        expect(again.status).toBe(429)
+        expect(again.body.retryAfter).toBeGreaterThan(0)
+        expect(again.body.retryAfter).toBeLessThanOrEqual(60)
+      }
+      expect(mailsTo(fresh)).toHaveLength(1) // the second request sent nothing
+    })
+
+    it('a resent code replaces the old one', async () => {
+      const email = emailFor('resend')
+      await askSignupCode(email)
+      const first = codeFor(email)
+      await prisma.emailCode.updateMany({ where: { email }, data: { createdAt: new Date(Date.now() - 61_000) } })
+      expect((await askSignupCode(email)).status).toBe(200)
+      const second = codeFor(email)
+      expect(await prisma.emailCode.count({ where: { email } })).toBe(1)
+      if (first !== second) expect((await post('/api/auth/signup', { email, password: PASSWORD, code: first })).status).toBe(400)
+    })
+
+    it('says so (and lets them retry at once) when the email could not be sent', async () => {
+      const email = emailFor('bounce')
+      setMailer({ send: async () => Promise.reject(new Error('smtp down')) })
+      const res = await askSignupCode(email)
+      expect(res.status).toBe(502)
+      expect(await prisma.emailCode.count({ where: { email } })).toBe(0) // no cooldown for a code that never arrived
+      setMailer({ send: async (mail) => void outbox.push(mail) })
+      expect((await askSignupCode(email)).status).toBe(200)
+    })
+
+    it('refuses to hand out unverifiable sign-ups when the server has no email set up', async () => {
+      setMailer(null)
+      const email = emailFor('nomail')
+      expect((await askSignupCode(email)).status).toBe(503)
+      expect((await askResetCode(email)).status).toBe(503)
+      expect((await post('/api/auth/signup', { email, password: PASSWORD, code: '123456' })).status).toBe(400)
+      setMailer({ send: async (mail) => void outbox.push(mail) })
+    })
+
+    it('limits code requests: 5 an hour per address, 10 an hour per network', async () => {
+      const email = emailFor('flood')
+      const statuses: number[] = []
+      for (let i = 0; i < 6; i++) {
+        await prisma.emailCode.deleteMany({ where: { email } }) // skip the 60s wait to reach the hourly cap
+        statuses.push((await askSignupCode(email)).status)
+      }
+      expect(statuses).toEqual([200, 200, 200, 200, 200, 429])
+
+      const ip = freshIp()
+      const codes: number[] = []
+      for (let i = 0; i < 11; i++) codes.push((await askSignupCode(emailFor('ip'), ip)).status)
+      expect(codes.slice(0, 10).every((c) => c === 200)).toBe(true)
+      expect(codes[10]).toBe(429)
+    })
+
+    it('rejects malformed addresses before sending anything', async () => {
+      for (const email of ['', 'nope', 'a@b', 'x'.repeat(300) + '@example.com']) {
+        expect((await askSignupCode(email)).status).toBe(400)
+      }
+      expect(outbox).toHaveLength(0)
+    })
+  })
+
+  describe('forgot password', () => {
+    const NEW_PASSWORD = 'a brand new password'
+    const reset = (email: string, code: string, password = NEW_PASSWORD) => post('/api/auth/password/reset', { email, code, password })
+
+    it('emails a code to a registered address and lets them choose a new password with it', async () => {
+      const { email } = await signUp()
+      outbox = []
+      expect((await askResetCode(email)).status).toBe(200)
+      expect(mailsTo(email)).toHaveLength(1)
+      expect(mailsTo(email)[0].subject).toMatch(/password reset code/i)
+      const res = await reset(email, codeFor(email))
+      expect(res.status).toBe(200)
+      expect(res.headers['set-cookie']).toBeUndefined() // choosing a password doesn't log anyone in
+
+      expect((await post('/api/auth/login', { email, password: PASSWORD })).status).toBe(401) // old one is dead
+      expect((await post('/api/auth/login', { email, password: NEW_PASSWORD })).status).toBe(200)
+    })
+
+    it('says the same to unknown addresses and sends nothing', async () => {
+      const { email } = await signUp()
+      outbox = []
+      const known = await askResetCode(email)
+      const unknown = await askResetCode(emailFor('nobody'))
+      expect(unknown.status).toBe(known.status)
+      expect(unknown.body).toEqual(known.body)
+      expect(outbox).toHaveLength(1)
+      expect(outbox[0].to).toBe(email)
+    })
+
+    it('ends every existing session, so a stolen cookie stops working', async () => {
+      const { email, cookie } = await signUp()
+      expect((await request(app).get('/api/auth/me').set('Cookie', cookie)).body.user).not.toBeNull()
+      await askResetCode(email)
+      expect((await reset(email, codeFor(email))).status).toBe(200)
+      expect((await request(app).get('/api/auth/me').set('Cookie', cookie)).body.user).toBeNull()
+      expect(await prisma.session.count()).toBe(0)
+    })
+
+    it('a code works once, only for that address, and 5 wrong guesses kill it', async () => {
+      const { email } = await signUp()
+      const other = (await signUp()).email
+      await askResetCode(email)
+      const code = codeFor(email)
+
+      expect((await reset(other, code)).status).toBe(400) // not their code
+      expect((await reset(email, code)).status).toBe(200)
+      expect((await reset(email, code, 'yet another password')).status).toBe(400) // used up
+      expect((await post('/api/auth/login', { email, password: NEW_PASSWORD })).status).toBe(200)
+
+      await prisma.emailCode.deleteMany() // fresh start for the guessing check
+      await askResetCode(email)
+      const right = codeFor(email)
+      const wrong = right === '123456' ? '654321' : '123456'
+      for (let i = 0; i < 5; i++) expect((await reset(email, wrong)).status).toBe(400)
+      expect((await reset(email, right)).status).toBe(400)
+    })
+
+    it('refuses an expired code, a missing code, a weak new password, and a sign-up code', async () => {
+      const { email } = await signUp()
+      await askResetCode(email)
+      const code = codeFor(email)
+
+      expect((await reset(email, code, 'short')).status).toBe(400) // weak password: rejected up front...
+      expect((await reset(email, '')).status).toBe(400)
+      expect((await reset(email, code)).status).toBe(200) // ...without having burned any guesses
+
+      await askSignupCode(email) // a registered address gets no sign-up code, so there is nothing to confuse
+      await prisma.emailCode.deleteMany({ where: { email } })
+      await askResetCode(email)
+      await prisma.emailCode.updateMany({ where: { email }, data: { expiresAt: new Date(Date.now() - 1000) } })
+      expect((await reset(email, codeFor(email), 'another fine password')).status).toBe(400)
+    })
+
+    it('a sign-up code cannot reset a password (and the other way round)', async () => {
+      const fresh = emailFor('cross')
+      await askSignupCode(fresh)
+      const signupCode = codeFor(fresh)
+      await prisma.user.create({ data: { email: fresh, passwordHash: 'scrypt$x' } })
+      expect((await reset(fresh, signupCode)).status).toBe(400)
+    })
+
+    it('does not reveal which addresses exist when resetting', async () => {
+      const unknown = await reset(emailFor('ghost'), '123456')
+      const { email } = await signUp()
+      const known = await reset(email, '123456')
+      expect(unknown.status).toBe(400)
+      expect(unknown.body).toEqual(known.body)
+    })
+
+    it('limits wrong codes per network', async () => {
+      const ip = freshIp()
+      const statuses: number[] = []
+      for (let i = 0; i < 21; i++) statuses.push((await post('/api/auth/password/reset', { email: emailFor('x'), code: '111111', password: NEW_PASSWORD }, ip)).status)
+      expect(statuses.slice(0, 20).every((s) => s === 400)).toBe(true)
+      expect(statuses[20]).toBe(429)
     })
   })
 
@@ -358,17 +622,14 @@ describe.skipIf(!hasDb)('API (integration, real PostgreSQL)', () => {
   })
 
   describe('abuse protection', () => {
-    it('limits sign-ups per IP and counts successful ones (no unlimited account farming)', async () => {
+    it('limits accounts created per IP (no unlimited account farming)', async () => {
       const ip = freshIp()
       const statuses: number[] = []
-      for (let i = 0; i < 7; i++) {
-        const res = await request(app).post('/api/auth/signup').set('X-Forwarded-For', ip).send({ email: emailFor('bot'), password: PASSWORD })
-        statuses.push(res.status)
-      }
+      for (let i = 0; i < 7; i++) statuses.push((await signUpWith(emailFor('bot'), {}, ip)).status)
       expect(statuses.slice(0, 5)).toEqual([201, 201, 201, 201, 201])
       expect(statuses.slice(5)).toEqual([429, 429])
       // another network is unaffected
-      expect((await request(app).post('/api/auth/signup').set('X-Forwarded-For', freshIp()).send({ email: emailFor('ok'), password: PASSWORD })).status).toBe(201)
+      expect((await signUpWith(emailFor('ok'))).status).toBe(201)
     })
 
     it('blocks password guessing from one IP, but not after successful logins', async () => {

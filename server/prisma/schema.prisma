@@ -63,3 +63,21 @@ model RateLimit {
   @@index([resetAt])
   @@map("erd_rate_limits")
 }
+
+/// One-time numeric codes sent by email: confirming a new address at sign-up, and resetting a password. Only a salted
+/// hash of the code is stored. A code lives 10 minutes and allows 5 guesses (see src/auth/codes.ts).
+model EmailCode {
+  id        String   @id @default(uuid())
+  email     String
+  /// "signup" | "reset"
+  purpose   String
+  salt      String
+  codeHash  String   @map("code_hash")
+  attempts  Int      @default(0)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([email, purpose, createdAt])
+  @@index([expiresAt])
+  @@map("erd_email_codes")
+}

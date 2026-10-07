@@ -5,9 +5,14 @@ import { z } from 'zod'
 const password = z.string().min(8, 'Use at least 8 characters').max(128, 'Use at most 128 characters')
 const email = z.string().trim().toLowerCase().max(254).pipe(z.email('Enter a valid email address'))
 
+/** The 6-digit code from the email (see src/auth/codes.ts). */
+const code = z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit code from the email')
+
+/** Creating an account needs the code sent to that address: no code, no account. */
 export const signupSchema = z.object({
   email,
   password,
+  code,
   name: z
     .string()
     .trim()
@@ -15,6 +20,11 @@ export const signupSchema = z.object({
     .optional()
     .transform((v) => v || undefined),
 })
+
+/** Ask for a code to be emailed (sign-up verification or password reset). */
+export const emailOnlySchema = z.object({ email })
+
+export const resetPasswordSchema = z.object({ email, code, password })
 
 export const loginSchema = z.object({ email, password: z.string().min(1).max(128) })
 

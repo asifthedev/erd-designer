@@ -12,6 +12,16 @@ const schema = z.object({
   ALLOWED_ORIGINS: z.string().default('http://localhost:5173,http://127.0.0.1:5173'),
   /** Set to 1 when the API sits behind a reverse proxy, so client IPs (rate limiting) are read correctly. */
   TRUST_PROXY: z.enum(['0', '1']).default('0'),
+  /**
+   * Outgoing email (verification and password-reset codes), as an SMTP connection URL, e.g.
+   * smtps://user:password@smtp.example.com:465. Without it, production refuses to send codes (so nobody can sign
+   * up unverified); development prints the email, code included, to the server console instead.
+   */
+  SMTP_URL: z.string().optional(),
+  /** The From: header, e.g. "erd.designer <no-reply@example.com>". Required together with SMTP_URL. */
+  MAIL_FROM: z.string().optional(),
+  /** Requests for a code always take at least this long, so answers can't reveal whether an address has an account. */
+  CODE_REQUEST_MIN_MS: z.coerce.number().int().min(0).default(900),
 })
 
 const parsed = schema.safeParse(process.env)

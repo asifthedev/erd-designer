@@ -39,7 +39,14 @@ type AuthState = {
 
   init: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
-  signup: (input: { name: string; email: string; password: string }) => Promise<void>
+  /** Emails a 6-digit code to the address. Resolves to how many seconds until another code may be requested. */
+  requestSignupCode: (email: string) => Promise<number>
+  /** Finishes sign-up: the account is only created when the code from that email is right. */
+  signup: (input: { name: string; email: string; password: string; code: string }) => Promise<void>
+  /** Forgot password: emails a reset code if the address has an account (the answer never says). */
+  requestResetCode: (email: string) => Promise<number>
+  /** Chooses a new password with the emailed code. Everyone is logged out; the person logs in afterwards. */
+  resetPassword: (input: { email: string; code: string; password: string }) => Promise<void>
   logout: () => Promise<void>
   continueAsGuest: () => void
   /** Back to the sign-in screen from guest mode (local work is kept). */
@@ -187,6 +194,20 @@ export const useAuth = create<AuthState>()((set, get) => {
     login: async (email, password) => {
       const { user } = await api<{ user: AuthUser }>('/auth/login', { body: { email, password } })
       await enter(user)
+    },
+
+    requestSignupCode: async (email) => {
+      const { cooldownSeconds } = await api<{ cooldownSeconds: number }>('/auth/signup/code', { body: { email } })
+      return cooldownSeconds
+    },
+
+    requestResetCode: async (email) => {
+      const { cooldownSeconds } = await api<{ cooldownSeconds: number }>('/auth/password/forgot', { body: { email } })
+      return cooldownSeconds
+    },
+
+    resetPassword: async (input) => {
+      await api('/auth/password/reset', { body: input })
     },
 
     signup: async (input) => {

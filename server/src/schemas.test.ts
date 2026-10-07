@@ -3,21 +3,28 @@ import { diagramSchema, loginSchema, signupSchema } from './schemas'
 
 describe('signupSchema', () => {
   it('normalises the email and trims the name', () => {
-    const r = signupSchema.parse({ email: '  Ada@Example.COM ', password: '12345678', name: '  Ada ' })
-    expect(r).toEqual({ email: 'ada@example.com', password: '12345678', name: 'Ada' })
+    const r = signupSchema.parse({ email: '  Ada@Example.COM ', password: '12345678', code: ' 123456 ', name: '  Ada ' })
+    expect(r).toEqual({ email: 'ada@example.com', password: '12345678', code: '123456', name: 'Ada' })
   })
 
   it('rejects short passwords and bad emails with readable messages', () => {
-    expect(signupSchema.safeParse({ email: 'a@b.co', password: '1234567' }).error?.issues[0].message).toMatch(
+    expect(signupSchema.safeParse({ email: 'a@b.co', password: '1234567', code: '123456' }).error?.issues[0].message).toMatch(
       /8/,
     )
-    expect(signupSchema.safeParse({ email: 'nope', password: '12345678' }).error?.issues[0].message).toMatch(
+    expect(signupSchema.safeParse({ email: 'nope', password: '12345678', code: '123456' }).error?.issues[0].message).toMatch(
       /email/i,
     )
   })
 
   it('turns an empty name into undefined', () => {
-    expect(signupSchema.parse({ email: 'a@b.co', password: '12345678', name: '  ' }).name).toBeUndefined()
+    expect(signupSchema.parse({ email: 'a@b.co', password: '12345678', code: '123456', name: '  ' }).name).toBeUndefined()
+  })
+
+  it('needs the 6-digit code', () => {
+    for (const code of [undefined, '', '12345', '1234567', 'abcdef', '12 456', '１２３４５６']) {
+      expect(signupSchema.safeParse({ email: 'a@b.co', password: '12345678', code }).success, String(code)).toBe(false)
+    }
+    expect(signupSchema.safeParse({ email: 'a@b.co', password: '12345678', code: '000000' }).success).toBe(true)
   })
 })
 

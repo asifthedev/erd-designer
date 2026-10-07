@@ -57,14 +57,18 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) does exactly this on
 ## Deploy to Vercel
 
 1. Import the repository in Vercel (root directory = repo root; `vercel.json` sets everything else).
-2. Add the environment variable `DATABASE_URL` (a pooled PostgreSQL URL, e.g. Neon / Prisma Postgres) and
-   `NODE_ENV=production`.
+2. Add the environment variables `DATABASE_URL` (a pooled PostgreSQL URL, e.g. Neon / Prisma Postgres),
+   `NODE_ENV=production`, and the email settings `SMTP_URL` and `MAIL_FROM`. **Email is required**: new accounts
+   and password resets need a code sent by email, and without these the server refuses to send codes.
 3. Deploy. The build applies database migrations (`prisma migrate deploy`), builds the web app, and bundles the API.
 
 ## Security model
 
 - **Passwords**: scrypt (N=2^15, r=8, p=1) with a random salt, constant-time comparison; unknown emails cost the
   same time as wrong passwords (no user enumeration through timing).
+- **Email verification**: an account is only created with the 6-digit code emailed to its address; the same code
+  mechanism resets a forgotten password (and ends all sessions). Codes expire after 10 minutes, allow 5 guesses, are
+  single-use and stored hashed; requests are rate limited and never reveal whether an address has an account.
 - **Sessions**: 256-bit random token in an `HttpOnly`, `SameSite=Lax`, `Secure`, `__Host-` prefixed cookie. Only a
   SHA-256 of the token is stored, so a leaked database can't be replayed. 30-day expiry, max 10 devices per user.
 - **CSRF**: cross-site writes are rejected by an `Origin` check on top of `SameSite=Lax`.

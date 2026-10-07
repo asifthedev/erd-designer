@@ -9,6 +9,7 @@ export default defineConfig({
     env: {
       NODE_ENV: 'test',
       TRUST_PROXY: '1', // tests choose the client IP per request via X-Forwarded-For
+      CODE_REQUEST_MIN_MS: '0', // the real server pads code requests to a minimum duration; tests needn't wait
       DATABASE_URL: process.env.TEST_DATABASE_URL ?? '',
     },
     fileParallelism: false, // the integration suite shares one database

@@ -4,11 +4,14 @@ const BASE = import.meta.env.VITE_API_URL ?? ''
 export class ApiError extends Error {
   status: number
   field?: string
+  /** On a 429 for "ask again later": how many seconds to wait. */
+  retryAfter?: number
 
-  constructor(message: string, status: number, field?: string) {
+  constructor(message: string, status: number, field?: string, retryAfter?: number) {
     super(message)
     this.status = status
     this.field = field
+    this.retryAfter = retryAfter
   }
 }
 
@@ -29,7 +32,7 @@ export async function api<T = unknown>(
     throw new ApiError('Cannot reach the server. Is the API running?', 0)
   }
   if (res.status === 204) return undefined as T
-  const data = (await res.json().catch(() => ({}))) as { error?: string; field?: string }
-  if (!res.ok) throw new ApiError(data.error ?? 'Something went wrong', res.status, data.field)
+  const data = (await res.json().catch(() => ({}))) as { error?: string; field?: string; retryAfter?: number }
+  if (!res.ok) throw new ApiError(data.error ?? 'Something went wrong', res.status, data.field, data.retryAfter)
   return data as T
 }
