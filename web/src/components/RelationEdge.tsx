@@ -9,6 +9,7 @@ import {
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Point } from '../core/model'
+import { routePoints, routeX, type Dir } from '../core/routing'
 import { useStore } from '../store'
 
 export type RelationKind = 'one-to-many' | 'one-to-one' | 'many-to-many'
@@ -26,34 +27,13 @@ const HALF = 10 // half-height of the bar / crow's foot spread
 const BAR = 10 // distance of the "one" bar from the table border
 const FOOT = 17 // distance of the crow's foot apex from the table border
 const RING_R = 6
-const STUB = 48 // straight run out of each table, long enough to hold the glyph
-const TURN = 24 // how far a line leaves a table before turning, when both ends are on the same side
 const CORNER = 10 // radius of the rounded corners
 
-/**
- * X of the vertical segment of the route. Lines are orthogonal (horizontal out of each table, one vertical run
- * between them), the way ER tools draw them. By default that run sits halfway between the two stubs; when both
- * ends leave the same side it goes just outside both (a neat bracket). A drag moves it left or right, but never
- * into a stub, so the glyphs always sit on straight line.
- *
- * Lines between the same two columns would otherwise share one vertical run and read as a single line, so each
- * gets a small offset derived from its target row (stable across renders, different per relation).
- */
-function routeX(sx: number, sPos: Position, tx: number, ty: number, tPos: Position, bend?: Point) {
-  const sDir = sPos === Position.Right ? 1 : -1
-  const tDir = tPos === Position.Right ? 1 : -1
-  const ax = sx + sDir * STUB
-  const bx = tx + tDir * STUB
-  const spread = ((Math.round(ty / 42) % 5) - 2) * 14
-  let x = sDir === tDir ? (sDir === 1 ? Math.max(ax, bx) + TURN : Math.min(ax, bx) - TURN) : (ax + bx) / 2 + spread
-  x += bend?.x ?? 0
-  x = sDir === 1 ? Math.max(x, ax) : Math.min(x, ax)
-  return tDir === 1 ? Math.max(x, bx) : Math.min(x, bx)
-}
+const dirOf = (p: Position): Dir => (p === Position.Right ? 1 : -1)
 
-/** Where the line passes halfway (the flip button sits here): on the vertical run, midway between the two ends. */
+/** Where the line passes halfway (the flip button sits here): on the vertical lane, midway between the two ends. */
 function midpoint(sx: number, sy: number, sPos: Position, tx: number, ty: number, tPos: Position, bend?: Point) {
-  return { x: routeX(sx, sPos, tx, ty, tPos, bend), y: (sy + ty) / 2 }
+  return { x: routeX(sx, dirOf(sPos), tx, ty, dirOf(tPos), bend), y: (sy + ty) / 2 }
 }
 
 /** Polyline through `pts` with each corner rounded by up to `radius` (less on short segments). */
@@ -90,16 +70,7 @@ function relationPath(
   tPos: Position,
   bend?: Point,
 ): string {
-  const x = routeX(sx, sPos, tx, ty, tPos, bend)
-  return roundedPolyline(
-    [
-      [sx, sy],
-      [x, sy],
-      [x, ty],
-      [tx, ty],
-    ],
-    CORNER,
-  )
+  return roundedPolyline(routePoints(sx, sy, dirOf(sPos), tx, ty, dirOf(tPos), bend), CORNER)
 }
 
 /**

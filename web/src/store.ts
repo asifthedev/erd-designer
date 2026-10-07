@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { checkRelations, isInvalid, type RelationIssue } from './core/relations'
+import { sidesForRects, type Side } from './core/routing'
 import {
   isOneToOne,
   type Column,
@@ -31,16 +32,18 @@ export const SIDEBAR_MAX = 960
 
 export const M2M_HANDLE = 'm2m'
 
-export type Side = 'l' | 'r'
 /** Every column / header has a connection point on each side: handle ids are `<columnId>.l` and `<columnId>.r`. */
 export const handleId = (columnId: string, side: Side) => `${columnId}.${side}`
 const columnOf = (handle: string) => handle.split('.')[0]
 
-/** Which side of each table a line should use: facing the other table; both on the right for a self-loop. */
+/**
+ * Which side of each table a line uses (see sidesForRects): across the gap when the tables have room between them,
+ * otherwise a bracket on one shared side so the line never passes behind a table; both on the right for a self-loop.
+ */
 function sidesFor(a: TableNodeType, b: TableNodeType): [Side, Side] {
   if (a.id === b.id) return ['r', 'r']
-  const cx = (n: TableNodeType) => n.position.x + (n.measured?.width ?? 680) / 2
-  return cx(b) >= cx(a) ? ['r', 'l'] : ['l', 'r']
+  const rect = (n: TableNodeType) => ({ left: n.position.x, right: n.position.x + (n.measured?.width ?? 680) })
+  return sidesForRects(rect(a), rect(b))
 }
 export const M2M_PREFIX = 'm2m:'
 
