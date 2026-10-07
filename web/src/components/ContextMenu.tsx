@@ -62,7 +62,7 @@ export function ContextMenu({ menu, onClose }: { menu: MenuTarget | null; onClos
               item.onSelect()
               onClose()
             }}
-            className={`flex w-full cursor-pointer items-center justify-between rounded-sm px-2.5 py-1.5 text-left outline-none hover:bg-white/8 focus-visible:bg-white/8 ${
+            className={`flex w-full cursor-pointer items-center justify-between rounded-sm px-2.5 py-1.5 text-left outline-none hover:bg-hover focus-visible:bg-hover ${
               item.danger ? 'text-danger' : ''
             }`}
           >

@@ -54,12 +54,12 @@ function Row({
   const deleteDiagram = useAuth((s) => s.deleteDiagram)
 
   const iconBtn =
-    'grid size-6 shrink-0 cursor-pointer place-items-center rounded-sm text-muted opacity-0 outline-none hover:bg-white/10 hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100'
+    'grid size-6 shrink-0 cursor-pointer place-items-center rounded-sm text-muted opacity-0 outline-none hover:bg-hover-strong hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100'
 
   return (
     <li
       className={`group flex items-center gap-1 rounded-md px-1.5 py-1 ${
-        active ? 'bg-key/15 text-key' : 'text-ink hover:bg-white/8'
+        active ? 'bg-key/15 text-key' : 'text-ink hover:bg-hover'
       } ${disabled ? 'pointer-events-none opacity-60' : ''}`}
     >
       {editing ? (
@@ -127,7 +127,7 @@ export function DiagramSidebar() {
           onClick={toggleList}
           title="Hide the list"
           aria-label="Hide the list of ERDs"
-          className="grid size-7 cursor-pointer place-items-center rounded-sm text-muted hover:bg-white/8 hover:text-ink"
+          className="grid size-7 cursor-pointer place-items-center rounded-sm text-muted hover:bg-hover hover:text-ink"
         >
           <PanelLeftClose size={17} />
         </button>

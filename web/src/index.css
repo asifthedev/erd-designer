@@ -3,15 +3,17 @@
 @import 'tailwindcss';
 @import '@xyflow/react/dist/style.css' layer(xyflow);
 @import '@fontsource-variable/google-sans-code';
+@import '@fontsource-variable/jetbrains-mono';
 @import '@fontsource-variable/inter';
 @import 'tw-animate-css';
 
-/* shadcn/ui dark variant: the app is always dark, <html class="dark"> switches it on. */
+/* shadcn/ui dark variant: <html class="dark"> is set for the dark themes and removed for the light one (see settings.ts). */
 @custom-variant dark (&:is(.dark *));
 
 /*
- * "Midnight" palette, chosen to be easy on the eyes for long sessions: a deep blue-slate instead of neutral grey,
- * off-white text (not pure white) and soft, slightly desaturated accents. Every colour in the app comes from here.
+ * "Midnight" palette (the default theme), chosen to be easy on the eyes for long sessions: a deep blue-slate instead
+ * of neutral grey, off-white text (not pure white) and soft, slightly desaturated accents. Every colour in the app
+ * comes from these tokens; the other themes further down only override them (see "Themes").
  */
 @theme {
   --font-mono: 'Google Sans Code Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
@@ -35,6 +37,10 @@
   --color-link-flow: #b9ffd9;
   --color-danger: #f7768e;
   --color-warning: #ff9e64;
+  /* Hover wash on menu rows / buttons (white on dark themes, black on the light one), and the minimap's dimming. */
+  --color-hover: rgb(255 255 255 / 8%);
+  --color-hover-strong: rgb(255 255 255 / 12%);
+  --color-mask: rgb(20 22 28 / 70%);
 
   /* shadcn/ui tokens, mapped onto the palette above so ui/* components match the app. */
   --color-background: var(--color-canvas);
@@ -44,7 +50,7 @@
   --color-border: var(--color-line);
   --color-input: var(--color-line);
   --color-ring: var(--color-key);
-  --color-accent: rgb(255 255 255 / 9%);
+  --color-accent: var(--color-hover);
   --color-accent-foreground: var(--color-key);
   --color-muted-foreground: var(--color-muted);
   --color-destructive: var(--color-danger);
@@ -75,7 +81,7 @@ html {
 }
 
 ::selection {
-  background: rgb(122 162 247 / 30%);
+  background: color-mix(in srgb, var(--color-key) 30%, transparent);
 }
 
 body {
@@ -101,8 +107,8 @@ body {
   --xy-controls-button-color-hover: var(--color-ink);
   --xy-controls-button-border-color: var(--color-line);
   --xy-minimap-background-color: var(--color-surface);
-  --xy-minimap-mask-background-color: rgb(20 22 28 / 70%);
-  --xy-selection-background-color: rgb(122 162 247 / 8%);
+  --xy-minimap-mask-background-color: var(--color-mask);
+  --xy-selection-background-color: color-mix(in srgb, var(--color-key) 8%, transparent);
   --xy-selection-border: 1px dotted var(--color-key);
 }
 
@@ -274,12 +280,12 @@ body {
   height: 24px;
   border: 0;
   border-radius: 8px;
-  background: rgb(255 255 255 / 8%);
+  background: var(--color-hover);
   color: var(--color-muted-foreground);
 }
 
 [data-sonner-toast] [data-close-button]:hover {
-  background: rgb(255 255 255 / 16%);
+  background: var(--color-hover-strong);
   color: var(--color-ink);
 }
 
@@ -298,4 +304,123 @@ body {
 /* Keep long titles from running under the close button. */
 [data-sonner-toast] [data-content] {
   padding-right: 32px;
+}
+
+/*
+ * Table font (Settings -> Table font / weight). Only the table cards use it: names, types and defaults. The
+ * interface keeps Inter, and the code panel keeps --font-mono. settings.ts sets the two variables on <html>.
+ */
+.table-font {
+  font-family: var(--table-font-family, var(--font-mono));
+  font-weight: var(--table-font-weight, 400);
+}
+
+/*
+ * Themes. <html data-theme="..."> picks one; Midnight is the default and lives in @theme above. Every theme sets
+ * the SAME full list of tokens (a test enforces it, plus text contrast), so no colour leaks through from another
+ * theme. The selector is [data-theme] rather than html[data-theme] so the Settings preview cards can show each
+ * theme's real colours by carrying the attribute themselves.
+ */
+[data-theme='midnight'] {
+  color-scheme: dark;
+  --color-canvas: #14161c;
+  --color-grid: #1a1d25;
+  --color-dot: #2b303b;
+  --color-surface: #1d2029;
+  --color-row: #222631;
+  --color-line: #313745;
+  --color-edge: #566074;
+  --color-ink: #d5dae5;
+  --color-muted: #8590a4;
+  --color-key: #7aa2f7;
+  --color-num: #e0af68;
+  --color-ok: #9ece6a;
+  --color-link: #1ded83;
+  --color-link-flow: #b9ffd9;
+  --color-danger: #f7768e;
+  --color-warning: #ff9e64;
+  --color-primary-foreground: #0e1420;
+  --color-secondary: #2a2f3b;
+  --color-hover: rgb(255 255 255 / 8%);
+  --color-hover-strong: rgb(255 255 255 / 12%);
+  --color-mask: rgb(20 22 28 / 70%);
+}
+
+/* Dracula: the classic purple-accented dark theme. */
+[data-theme='dracula'] {
+  color-scheme: dark;
+  --color-canvas: #1e1f29;
+  --color-grid: #23242f;
+  --color-dot: #343746;
+  --color-surface: #282a36;
+  --color-row: #2f3141;
+  --color-line: #44475a;
+  --color-edge: #6c78a8;
+  --color-ink: #f8f8f2;
+  --color-muted: #9aa3c7;
+  --color-key: #bd93f9;
+  --color-num: #ffb86c;
+  --color-ok: #50fa7b;
+  --color-link: #50fa7b;
+  --color-link-flow: #c5ffd6;
+  --color-danger: #ff6e6e;
+  --color-warning: #ffb86c;
+  --color-primary-foreground: #1e1f29;
+  --color-secondary: #343746;
+  --color-hover: rgb(255 255 255 / 8%);
+  --color-hover-strong: rgb(255 255 255 / 12%);
+  --color-mask: rgb(30 31 41 / 70%);
+}
+
+/* Gruvbox Dark: warm, low-glare browns with retro accents. */
+[data-theme='gruvbox'] {
+  color-scheme: dark;
+  --color-canvas: #1d2021;
+  --color-grid: #232627;
+  --color-dot: #3c3836;
+  --color-surface: #282828;
+  --color-row: #32302f;
+  --color-line: #504945;
+  --color-edge: #8a7d70;
+  --color-ink: #ebdbb2;
+  --color-muted: #a89984;
+  --color-key: #83a598;
+  --color-num: #fabd2f;
+  --color-ok: #b8bb26;
+  --color-link: #b8bb26;
+  --color-link-flow: #e3e58a;
+  --color-danger: #fb4934;
+  --color-warning: #fe8019;
+  --color-primary-foreground: #1d2021;
+  --color-secondary: #3c3836;
+  --color-hover: rgb(255 255 255 / 8%);
+  --color-hover-strong: rgb(255 255 255 / 12%);
+  --color-mask: rgb(29 32 33 / 70%);
+}
+
+/* Solarized Light: the light theme many programmers swear by. Accents are a shade deeper than the original
+   so text stays readable on the cream background. */
+[data-theme='solarized-light'] {
+  color-scheme: light;
+  --color-canvas: #fdf6e3;
+  --color-grid: #f6efdb;
+  --color-dot: #d8d0b8;
+  --color-surface: #eee8d5;
+  --color-row: #f6f0de;
+  --color-line: #d6cfb8;
+  --color-edge: #93a1a1;
+  --color-ink: #52676e;
+  --color-muted: #6a7f85;
+  --color-key: #1a6fa8;
+  --color-num: #946d00;
+  --color-ok: #667700;
+  --color-link: #1f8a82;
+  --color-link-flow: #5fc9c0;
+  --color-danger: #d02d2a;
+  --color-warning: #c04612;
+  --color-primary-foreground: #fdf6e3;
+  --color-secondary: #e3dcc6;
+  --color-hover: rgb(0 0 0 / 6%);
+  --color-hover-strong: rgb(0 0 0 / 10%);
+  --color-mask: rgb(238 232 213 / 72%);
 }

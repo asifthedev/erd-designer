@@ -135,7 +135,7 @@ function TableNodeView({ id, data, selected }: NodeProps<TableNodeType>) {
 
   return (
     <div
-      className={`group/table min-w-[680px] rounded-sm border bg-surface font-mono text-[16px] shadow-lg shadow-black/30 ${
+      className={`table-font group/table min-w-[680px] rounded-sm border bg-surface text-[16px] shadow-lg shadow-black/30 ${
         selected ? 'border-key' : 'border-line'
       }`}
     >

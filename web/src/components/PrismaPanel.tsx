@@ -147,7 +147,7 @@ export function PrismaPanel() {
             aria-selected={format === value}
             onClick={() => setFormat(value)}
             className={`cursor-pointer rounded-md px-2.5 py-1 text-[13px] font-medium ${
-              format === value ? 'bg-key/15 text-key' : 'text-muted hover:bg-white/8 hover:text-ink'
+              format === value ? 'bg-key/15 text-key' : 'text-muted hover:bg-hover hover:text-ink'
             }`}
           >
             {label}

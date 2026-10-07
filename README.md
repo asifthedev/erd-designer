@@ -4,6 +4,15 @@ A visual database designer. Drag tables onto a canvas, draw relations, and get a
 schema** and **SQL** (PostgreSQL / MySQL / SQLite) generated live. Sign in to keep **several ERDs** in your account (listed in a collapsible
 left sidebar) and open them on any device.
 
+## Settings
+
+The gear icon in the toolbar opens **Settings** (saved in this browser):
+
+- **Theme**: Midnight (default), Dracula, Gruvbox (dark) and Solarized Light. The palettes are CSS tokens in
+  `web/src/index.css`; a test checks that every theme defines the full set and keeps text readable (WCAG contrast).
+- **Table font**: Google Sans Code or JetBrains Mono, in **Light / Regular / Medium**. It only applies to the tables;
+  the rest of the interface keeps its own font.
+
 ## Repository layout
 
 | Path | What it is |

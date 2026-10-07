@@ -110,7 +110,7 @@ function Header({
           title="Reset line shape (it was moved by hand)"
           aria-label="Reset line shape"
           onClick={onResetShape}
-          className="ml-auto grid size-8 cursor-pointer place-items-center rounded-md text-muted hover:bg-white/8 hover:text-ink"
+          className="ml-auto grid size-8 cursor-pointer place-items-center rounded-md text-muted hover:bg-hover hover:text-ink"
         >
           <Undo2 size={16} />
         </button>

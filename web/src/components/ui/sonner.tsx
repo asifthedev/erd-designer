@@ -1,9 +1,10 @@
 import { CheckIcon, InfoIcon, Loader2Icon, TriangleAlertIcon, XIcon } from "lucide-react"
 import type { ReactNode } from "react"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
+import { isLightTheme, useSettings } from "../../settings"
 
-// The app is always dark, so there is no next-themes here: the theme is fixed and the toast colours come
-// from the app's shadcn tokens (see @theme in index.css). The card look (colour wash, stripes, close button)
+// No next-themes here: the toast colours come from the app's shadcn tokens (see @theme and "Themes" in
+// index.css), and Sonner's own light / dark switch follows the selected theme. The card look (colour wash, stripes, close button)
 // is in index.css under "Toasts".
 
 /** Filled round badge with a dark glyph, like the status icons of the toast design. */
@@ -19,9 +20,10 @@ function Badge({ color, children }: { color: string; children: ReactNode }) {
 }
 
 const Toaster = ({ ...props }: ToasterProps) => {
+  const light = useSettings((s) => isLightTheme(s.theme))
   return (
     <Sonner
-      theme="dark"
+      theme={light ? "light" : "dark"}
       className="toaster group"
       icons={{
         success: (

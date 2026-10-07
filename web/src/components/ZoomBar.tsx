@@ -3,7 +3,7 @@ import { Grid3x3, Maximize, Minus, Plus } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 const btn =
-  'grid size-9 cursor-pointer place-items-center rounded-md text-ink hover:bg-white/8 focus-visible:bg-white/8 outline-none'
+  'grid size-9 cursor-pointer place-items-center rounded-md text-ink hover:bg-hover focus-visible:bg-hover outline-none'
 
 function Divider() {
   return <div className="mx-1 h-6 w-px bg-line" />
@@ -50,7 +50,7 @@ export function ZoomBar({ showGrid, onToggleGrid }: { showGrid: boolean; onToggl
           title="Reset zoom to 100%"
           aria-label="Reset zoom"
           onClick={() => zoomTo(1, { duration: 150 })}
-          className="h-9 min-w-16 cursor-pointer rounded-md px-2 text-center text-[15px] font-medium text-ink tabular-nums outline-none hover:bg-white/8 focus-visible:bg-white/8"
+          className="h-9 min-w-16 cursor-pointer rounded-md px-2 text-center text-[15px] font-medium text-ink tabular-nums outline-none hover:bg-hover focus-visible:bg-hover"
         >
           {Math.round(zoom * 100)}%
         </button>

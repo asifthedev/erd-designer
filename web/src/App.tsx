@@ -21,6 +21,7 @@ import { useAutosave } from '@/auth/useAutosave'
 import { AuthScreen } from '@/components/AuthScreen'
 import { ClearAllToasts } from '@/components/ClearAllToasts'
 import { DiagramSidebar } from '@/components/DiagramSidebar'
+import { SettingsMenu } from '@/components/SettingsMenu'
 import { UserMenu } from '@/components/UserMenu'
 import { Toaster } from '@/components/ui/sonner'
 import { ZoomBar } from './components/ZoomBar'
@@ -31,6 +32,7 @@ import { ConnectionLine, RelationEdge } from './components/RelationEdge'
 import { RelationCard } from './components/RelationCard'
 import { TableNode } from './components/TableNode'
 import { PROVIDERS } from './core/model'
+import { isLightTheme, useSettings } from './settings'
 import { deriveEdges, M2M_PREFIX, SIDEBAR_MAX, SIDEBAR_MIN, useStore } from './store'
 
 // Registered once at module level: React Flow re-mounts every node if these objects change identity.
@@ -58,6 +60,7 @@ function Canvas() {
   const hasClipboard = useStore((s) => s.clipboard !== null)
   const { screenToFlowPosition, fitView } = useReactFlow()
   const authed = useAuth((s) => s.status === 'authed')
+  const light = useSettings((s) => isLightTheme(s.theme))
   const currentId = useAuth((s) => s.currentId)
   const listOpen = useStore((s) => s.listOpen)
   const toggleList = useStore((s) => s.toggleList)
@@ -232,7 +235,7 @@ function Canvas() {
             items: [{ label: 'Paste', shortcut: 'Ctrl V', onSelect: () => pasteTables(at) }],
           })
         }}
-        colorMode="dark"
+        colorMode={light ? 'light' : 'dark'}
         minZoom={0.2}
         // Open at exactly 100%: fitView centres the tables, and min = max = 1 pins the zoom level.
         fitView
@@ -256,7 +259,7 @@ function Canvas() {
           </Panel>
         )}
         <ZoomBar showGrid={showGrid} onToggleGrid={() => setShowGrid((g) => !g)} />
-        <MiniMap pannable zoomable nodeColor="#313745" />
+        <MiniMap pannable zoomable nodeColor="var(--color-line)" />
       </ReactFlow>
       <ContextMenu menu={menu} onClose={closeMenu} />
     </>
@@ -333,6 +336,7 @@ function Toolbar() {
       >
         {'{ }'} Code
       </button>
+      <SettingsMenu />
       <UserMenu />
     </header>
   )

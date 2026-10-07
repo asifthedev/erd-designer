@@ -119,7 +119,7 @@ export function AuthScreen() {
                 tabIndex={-1}
                 aria-label={show ? 'Hide password' : 'Show password'}
                 onClick={() => setShow((v) => !v)}
-                className="absolute top-1/2 right-2 grid size-7 -translate-y-1/2 cursor-pointer place-items-center rounded-md text-muted hover:bg-white/8 hover:text-ink"
+                className="absolute top-1/2 right-2 grid size-7 -translate-y-1/2 cursor-pointer place-items-center rounded-md text-muted hover:bg-hover hover:text-ink"
               >
                 {show ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
