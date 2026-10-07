@@ -136,7 +136,7 @@ function makeNode(table: Table, position: { x: number; y: number }): TableNodeTy
 
 /**
  * The starter workspace a new user lands on: a small blog (users, posts, comments, tags) that shows the main
- * features at a glance: primary keys, unique / not-null flags, defaults, foreign keys with ON DELETE actions,
+ * features at a glance: primary keys, unique / not-null flags, defaults, foreign keys with ON DELETE CASCADE,
  * a many-to-many link, and per-table icons.
  */
 function sampleWorkspace(): { nodes: TableNodeType[]; manyToMany: ManyToMany[] } {
@@ -181,11 +181,7 @@ function sampleWorkspace(): { nodes: TableNodeType[]; manyToMany: ManyToMany[] }
         notNull: true,
         references: { tableId: posts.id, columnId: posts.columns[0].id, onDelete: 'CASCADE' },
       },
-      {
-        // Nullable on purpose: deleting a user keeps their comments (ON DELETE SET NULL).
-        ...newColumn('author_id', 'INT'),
-        references: { tableId: users.id, columnId: users.columns[0].id, onDelete: 'SET NULL' },
-      },
+      { ...newColumn('created_at', 'TIMESTAMP'), notNull: true, default: 'now()' },
     ],
   }
   const tags: Table = {
@@ -195,12 +191,14 @@ function sampleWorkspace(): { nodes: TableNodeType[]; manyToMany: ManyToMany[] }
     columns: [pk(), { ...newColumn('name', 'VARCHAR(50)'), notNull: true, unique: true }],
   }
   return {
-    // Two columns, 780px apart (tables are ~680px wide), so nothing overlaps at 100% zoom.
+    // Laid out so no relation line crosses another: `posts` is the hub on the right, everything it relates to
+    // stacks in the left column, so every line runs between the two columns (never between tables in the same
+    // column). The 280px gap (tables are ~680px wide) gives the lines room instead of squeezing them together.
     nodes: [
-      makeNode(users, { x: 0, y: 0 }),
-      makeNode(posts, { x: 780, y: 0 }),
-      makeNode(comments, { x: 0, y: 440 }),
-      makeNode(tags, { x: 780, y: 440 }),
+      makeNode(tags, { x: 0, y: 0 }),
+      makeNode(comments, { x: 0, y: 300 }),
+      makeNode(users, { x: 0, y: 620 }),
+      makeNode(posts, { x: 960, y: 160 }),
     ],
     // A post has many tags and a tag many posts (Prisma emits an implicit relation).
     manyToMany: [{ id: uid(), aTableId: posts.id, bTableId: tags.id }],
@@ -729,6 +727,17 @@ export const useStore = create<State>()(
     },
   ),
 )
+
+// The side panel shows ONE thing at a time: the generated code or the selected relation's settings. Whichever the
+// user opens last wins. Done as a subscription (not in each action) because `selectedEdgeId` is set from many
+// places: clicking a line, drawing a new relation, adding a foreign key from the table, picking a many-to-many.
+useStore.subscribe((state, prev) => {
+  if (state.selectedEdgeId && !prev.selectedEdgeId && state.codeOpen) {
+    useStore.setState({ codeOpen: false }) // a relation was opened: hide the code
+  } else if (state.codeOpen && !prev.codeOpen && state.selectedEdgeId) {
+    useStore.setState({ selectedEdgeId: null }) // the code was opened: deselect the relation
+  }
+})
 
 export function toDiagram(
   provider: Provider,

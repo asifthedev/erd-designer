@@ -344,12 +344,37 @@ describe('starter workspace', () => {
     const { useStore } = await import('../store')
     useStore.getState().loadSample()
     const { nodes, manyToMany } = useStore.getState()
-    expect(nodes.map((n) => n.data.name)).toEqual(['users', 'posts', 'comments', 'tags'])
+    expect(nodes.map((n) => n.data.name)).toEqual(['tags', 'comments', 'users', 'posts'])
     expect(manyToMany).toHaveLength(1)
     for (const provider of ['postgresql', 'mysql', 'sqlite'] as const) {
       const diagram = { provider, tables: nodes.map((n) => n.data), manyToMany }
       expect(checkRelations(diagram).filter(isInvalid)).toEqual([])
       expect(generateSql(diagram).warnings).toEqual([])
     }
+  })
+})
+
+describe('side panel', () => {
+  it('shows either the code or the relation settings, never both (last opened wins)', async () => {
+    const { useStore } = await import('../store')
+    const st = () => useStore.getState()
+
+    useStore.setState({ codeOpen: true, selectedEdgeId: null })
+    st().selectEdge('t1:c1') // open a relation while the code is showing
+    expect(st().selectedEdgeId).toBe('t1:c1')
+    expect(st().codeOpen).toBe(false)
+
+    st().toggleCode() // open the code while a relation is showing
+    expect(st().codeOpen).toBe(true)
+    expect(st().selectedEdgeId).toBeNull()
+
+    st().selectEdge('t1:c1')
+    st().selectEdge('t2:c2') // switching between relations keeps the code closed
+    expect(st().codeOpen).toBe(false)
+    expect(st().selectedEdgeId).toBe('t2:c2')
+
+    st().closeSidebar() // closing leaves both closed
+    expect(st().codeOpen).toBe(false)
+    expect(st().selectedEdgeId).toBeNull()
   })
 })
