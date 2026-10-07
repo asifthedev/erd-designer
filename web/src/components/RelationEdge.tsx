@@ -27,29 +27,59 @@ const BAR = 10 // distance of the "one" bar from the table border
 const FOOT = 17 // distance of the crow's foot apex from the table border
 const RING_R = 6
 const STUB = 48 // straight run out of each table, long enough to hold the glyph
+const TURN = 24 // how far a line leaves a table before turning, when both ends are on the same side
+const CORNER = 10 // radius of the rounded corners
 
-/** Where the line passes halfway: between the two straight stubs, unless the user dragged it elsewhere. */
-function midpoint(
-  sx: number,
-  sy: number,
-  sPos: Position,
-  tx: number,
-  ty: number,
-  tPos: Position,
-  bend?: Point,
-) {
+/**
+ * X of the vertical segment of the route. Lines are orthogonal (horizontal out of each table, one vertical run
+ * between them), the way ER tools draw them. By default that run sits halfway between the two stubs; when both
+ * ends leave the same side it goes just outside both (a neat bracket). A drag moves it left or right, but never
+ * into a stub, so the glyphs always sit on straight line.
+ *
+ * Lines between the same two columns would otherwise share one vertical run and read as a single line, so each
+ * gets a small offset derived from its target row (stable across renders, different per relation).
+ */
+function routeX(sx: number, sPos: Position, tx: number, ty: number, tPos: Position, bend?: Point) {
   const sDir = sPos === Position.Right ? 1 : -1
   const tDir = tPos === Position.Right ? 1 : -1
-  return {
-    x: (sx + sDir * STUB + tx + tDir * STUB) / 2 + (bend?.x ?? 0),
-    y: (sy + ty) / 2 + (bend?.y ?? 0),
+  const ax = sx + sDir * STUB
+  const bx = tx + tDir * STUB
+  const spread = ((Math.round(ty / 42) % 5) - 2) * 14
+  let x = sDir === tDir ? (sDir === 1 ? Math.max(ax, bx) + TURN : Math.min(ax, bx) - TURN) : (ax + bx) / 2 + spread
+  x += bend?.x ?? 0
+  x = sDir === 1 ? Math.max(x, ax) : Math.min(x, ax)
+  return tDir === 1 ? Math.max(x, bx) : Math.min(x, bx)
+}
+
+/** Where the line passes halfway (the flip button sits here): on the vertical run, midway between the two ends. */
+function midpoint(sx: number, sy: number, sPos: Position, tx: number, ty: number, tPos: Position, bend?: Point) {
+  return { x: routeX(sx, sPos, tx, ty, tPos, bend), y: (sy + ty) / 2 }
+}
+
+/** Polyline through `pts` with each corner rounded by up to `radius` (less on short segments). */
+function roundedPolyline(pts: [number, number][], radius: number): string {
+  // Drop repeated points so zero-length segments can't produce NaN directions.
+  const p = pts.filter((pt, i) => i === 0 || pt[0] !== pts[i - 1][0] || pt[1] !== pts[i - 1][1])
+  let d = `M${p[0][0]},${p[0][1]}`
+  for (let i = 1; i < p.length - 1; i++) {
+    const [px, py] = p[i - 1]
+    const [cx, cy] = p[i]
+    const [nx, ny] = p[i + 1]
+    const inLen = Math.hypot(cx - px, cy - py)
+    const outLen = Math.hypot(nx - cx, ny - cy)
+    const r = Math.min(radius, inLen / 2, outLen / 2)
+    d +=
+      `L${cx - ((cx - px) / inLen) * r},${cy - ((cy - py) / inLen) * r}` +
+      `Q${cx},${cy} ${cx + ((nx - cx) / outLen) * r},${cy + ((ny - cy) / outLen) * r}`
   }
+  const last = p[p.length - 1]
+  return `${d}L${last[0]},${last[1]}`
 }
 
 /**
- * Path between two table borders: leave each border straight for STUB px (so the glyph sits on a straight
- * piece of line, facing the right way), and join the two stub ends with a smooth S-curve. With a `bend` the
- * curve is routed through the dragged middle point instead (two smooth halves that meet there).
+ * Path between two table borders: out of the source straight for STUB px, a horizontal run to the vertical
+ * segment (see routeX), vertical to the target's height, then horizontal into the target's stub. Corners are
+ * softly rounded.
  */
 function relationPath(
   sx: number,
@@ -60,35 +90,15 @@ function relationPath(
   tPos: Position,
   bend?: Point,
 ): string {
-  const sDir = sPos === Position.Right ? 1 : -1
-  const tDir = tPos === Position.Right ? 1 : -1
-  const ax = sx + sDir * STUB
-  const bx = tx + tDir * STUB
-
-  if (!bend || (Math.abs(bend.x) < 1 && Math.abs(bend.y) < 1)) {
-    // Control handles scale with the distance, so short hops stay tight and long ones stay smooth.
-    const reach = Math.max(40, Math.min(220, Math.hypot(bx - ax, ty - sy) * 0.4))
-    return (
-      `M${sx},${sy}L${ax},${sy}` +
-      `C${ax + sDir * reach},${sy} ${bx + tDir * reach},${ty} ${bx},${ty}` +
-      `L${tx},${ty}`
-    )
-  }
-
-  const m = midpoint(sx, sy, sPos, tx, ty, tPos, bend)
-  // At the dragged point the line runs along the straight direction between the two stub ends: that keeps the
-  // route a smooth arch whichever way the point is pulled, instead of twisting into a loop.
-  const len = Math.hypot(bx - ax, ty - sy)
-  const tan = len ? { x: (bx - ax) / len, y: (ty - sy) / len } : { x: sDir, y: 0 }
-  const reach = (px: number, py: number, qx: number, qy: number) =>
-    Math.max(30, Math.min(200, Math.hypot(qx - px, qy - py) * 0.4))
-  const r1 = reach(ax, sy, m.x, m.y)
-  const r2 = reach(m.x, m.y, bx, ty)
-  return (
-    `M${sx},${sy}L${ax},${sy}` +
-    `C${ax + sDir * r1},${sy} ${m.x - tan.x * r1},${m.y - tan.y * r1} ${m.x},${m.y}` +
-    `C${m.x + tan.x * r2},${m.y + tan.y * r2} ${bx + tDir * r2},${ty} ${bx},${ty}` +
-    `L${tx},${ty}`
+  const x = routeX(sx, sPos, tx, ty, tPos, bend)
+  return roundedPolyline(
+    [
+      [sx, sy],
+      [x, sy],
+      [x, ty],
+      [tx, ty],
+    ],
+    CORNER,
   )
 }
 
@@ -145,6 +155,9 @@ export function RelationEdge(props: EdgeProps) {
   const startDrag = (e: ReactPointerEvent) => {
     if (e.button !== 0) return
     e.stopPropagation()
+    e.preventDefault()
+    // Dragging across the canvas must not select the text of the tables underneath.
+    document.body.style.userSelect = 'none'
     const origin = screenToFlowPosition({ x: e.clientX, y: e.clientY })
     const base = savedBend ?? { x: 0, y: 0 }
     let result: Point | null = null
@@ -161,7 +174,15 @@ export function RelationEdge(props: EdgeProps) {
     const up = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
-      if (result) setRelationBend(id, result)
+      document.body.style.userSelect = ''
+      if (result) {
+        // After a drag the pointer is released over empty canvas, so the browser's follow-up `click` lands on the
+        // pane and would deselect the relation (closing its panel). Swallow that one click.
+        const swallow = (ev: MouseEvent) => ev.stopPropagation()
+        window.addEventListener('click', swallow, { capture: true, once: true })
+        setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0)
+        setRelationBend(id, result)
+      }
       // Either way the relation is now the selected one (its panel shows the reset button).
       selectEdge(id)
       setLiveBend(null)
