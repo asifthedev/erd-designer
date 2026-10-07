@@ -59,9 +59,9 @@ describe('themes', () => {
     expect(c('line', 'canvas'), 'borders are visible against the canvas').toBeGreaterThanOrEqual(1.15)
   })
 
-  it('offers Midnight (the default) and Dracula', () => {
+  it('offers Midnight (the default), Dracula, Vercel and Warm Dark', () => {
     expect(DEFAULT_SETTINGS.theme).toBe('midnight')
-    expect(THEMES.map((t) => t.id)).toEqual(['midnight', 'dracula'])
+    expect(THEMES.map((t) => t.id)).toEqual(['midnight', 'dracula', 'vercel', 'warm'])
   })
 })
 

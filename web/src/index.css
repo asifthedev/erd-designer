@@ -380,3 +380,55 @@ body {
   --color-hover-strong: rgb(255 255 255 / 12%);
   --color-mask: rgb(30 31 41 / 70%);
 }
+
+/* Vercel: pure black, hairline grey borders, white as the accent (Geist-style). */
+[data-theme='vercel'] {
+  color-scheme: dark;
+  --color-canvas: #000000;
+  --color-grid: #0a0a0a;
+  --color-dot: #262626;
+  --color-surface: #0a0a0a;
+  --color-row: #111111;
+  --color-line: #262626;
+  --color-edge: #6b6b6b;
+  --color-ink: #ededed;
+  --color-muted: #a1a1a1;
+  --color-key: #ffffff;
+  --color-num: #f5a623;
+  --color-ok: #50e3c2;
+  --color-link: #0070f3;
+  --color-link-flow: #79b8ff;
+  --color-danger: #ff4d4d;
+  --color-warning: #f5a623;
+  --color-primary-foreground: #000000;
+  --color-secondary: #1a1a1a;
+  --color-hover: rgb(255 255 255 / 8%);
+  --color-hover-strong: rgb(255 255 255 / 14%);
+  --color-mask: rgb(0 0 0 / 75%);
+}
+
+/* Warm Dark: brown-tinted charcoal with cream text and amber accents. */
+[data-theme='warm'] {
+  color-scheme: dark;
+  --color-canvas: #1c1917;
+  --color-grid: #211d1a;
+  --color-dot: #3a332d;
+  --color-surface: #26211d;
+  --color-row: #2d2722;
+  --color-line: #3f372f;
+  --color-edge: #8a7b6b;
+  --color-ink: #f0e6d8;
+  --color-muted: #a8998a;
+  --color-key: #e8a363;
+  --color-num: #d9b85c;
+  --color-ok: #a3c07a;
+  --color-link: #e8a363;
+  --color-link-flow: #ffd9b0;
+  --color-danger: #e57373;
+  --color-warning: #f0b56a;
+  --color-primary-foreground: #1c1917;
+  --color-secondary: #332c26;
+  --color-hover: rgb(255 240 220 / 8%);
+  --color-hover-strong: rgb(255 240 220 / 12%);
+  --color-mask: rgb(28 25 23 / 72%);
+}

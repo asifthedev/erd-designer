@@ -10,6 +10,8 @@ import { persist } from 'zustand/middleware'
 export const THEMES = [
   { id: 'midnight', name: 'Midnight', note: 'Default' },
   { id: 'dracula', name: 'Dracula', note: 'Purple accents' },
+  { id: 'vercel', name: 'Vercel', note: 'Pure black' },
+  { id: 'warm', name: 'Warm Dark', note: 'Cream and amber' },
 ] as const
 export type ThemeId = (typeof THEMES)[number]['id']
 
