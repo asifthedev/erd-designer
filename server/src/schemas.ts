@@ -26,6 +26,9 @@ export const emailOnlySchema = z.object({ email })
 
 export const resetPasswordSchema = z.object({ email, code, password })
 
+/** "Is this code right?", asked on its own page before the new password is chosen. */
+export const verifyCodeSchema = z.object({ email, code })
+
 export const loginSchema = z.object({ email, password: z.string().min(1).max(128) })
 
 // ---- Saved diagram -----------------------------------------------------------------------------

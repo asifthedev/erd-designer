@@ -15,6 +15,7 @@ npm run dev                   # http://127.0.0.1:3001 (watch mode)
 | POST | `/api/auth/signup/code` | `{ email }` → emails a 6-digit code (200 for any address; 429 `retryAfter` within 60 s of the last one) |
 | POST | `/api/auth/signup` | `{ email, password (8-128), code, name? }` → 201 + session cookie. **No valid code, no account.** |
 | POST | `/api/auth/password/forgot` | `{ email }` → emails a reset code to registered addresses; the answer is the same for everyone else |
+| POST | `/api/auth/password/verify` | `{ email, code }` → 200 when the reset code is right (changes nothing; a right code keeps its guesses) so the form can ask for the new password on the next page |
 | POST | `/api/auth/password/reset` | `{ email, code, password }` → 200; sets the new password and ends every session (no auto log-in) |
 | POST | `/api/auth/login` | `{ email, password }` → 200 + session cookie |
 | POST | `/api/auth/logout` | 204, ends the session |

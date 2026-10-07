@@ -45,6 +45,8 @@ type AuthState = {
   signup: (input: { name: string; email: string; password: string; code: string }) => Promise<void>
   /** Forgot password: emails a reset code if the address has an account (the answer never says). */
   requestResetCode: (email: string) => Promise<number>
+  /** Checks the emailed reset code on its own (it throws when wrong), before the new password is asked for. */
+  verifyResetCode: (input: { email: string; code: string }) => Promise<void>
   /** Chooses a new password with the emailed code. Everyone is logged out; the person logs in afterwards. */
   resetPassword: (input: { email: string; code: string; password: string }) => Promise<void>
   logout: () => Promise<void>
@@ -204,6 +206,10 @@ export const useAuth = create<AuthState>()((set, get) => {
     requestResetCode: async (email) => {
       const { cooldownSeconds } = await api<{ cooldownSeconds: number }>('/auth/password/forgot', { body: { email } })
       return cooldownSeconds
+    },
+
+    verifyResetCode: async (input) => {
+      await api('/auth/password/verify', { body: input })
     },
 
     resetPassword: async (input) => {

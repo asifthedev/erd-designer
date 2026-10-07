@@ -43,9 +43,16 @@ describe('the code requests the store sends', () => {
 
     expect(await s.requestSignupCode('a@b.co')).toBe(60)
     expect(await s.requestResetCode('a@b.co')).toBe(60)
+    await s.verifyResetCode({ email: 'a@b.co', code: '123456' }) // the code page, before the new password is asked for
     await s.resetPassword({ email: 'a@b.co', code: '123456', password: 'a new password' })
-    expect(calls.map((c) => c.path)).toEqual(['/api/auth/signup/code', '/api/auth/password/forgot', '/api/auth/password/reset'])
+    expect(calls.map((c) => c.path)).toEqual([
+      '/api/auth/signup/code',
+      '/api/auth/password/forgot',
+      '/api/auth/password/verify',
+      '/api/auth/password/reset',
+    ])
+    expect(calls[2].body).toEqual({ email: 'a@b.co', code: '123456' })
     expect(calls[0].body).toEqual({ email: 'a@b.co' })
-    expect(calls[2].body).toEqual({ email: 'a@b.co', code: '123456', password: 'a new password' })
+    expect(calls[3].body).toEqual({ email: 'a@b.co', code: '123456', password: 'a new password' })
   })
 })

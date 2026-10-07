@@ -43,15 +43,28 @@ export async function issueCode(
 /**
  * Is `code` the live code for this address? Every call uses up one of the code's guesses, atomically, so parallel
  * requests can't squeeze in extra guesses. Doesn't consume a correct code: call consumeCodes once the action worked.
+ *
+ * `refundOnSuccess` is for a "was that right?" step that is followed by the real action with the same code (the
+ * password reset form checks the code on one page and uses it on the next): a correct answer gives its guess back,
+ * so the two steps together don't eat into the 5 guesses. Wrong answers always stay counted.
  */
-export async function checkCode(email: string, purpose: CodePurpose, code: string): Promise<boolean> {
+export async function checkCode(
+  email: string,
+  purpose: CodePurpose,
+  code: string,
+  { refundOnSuccess = false }: { refundOnSuccess?: boolean } = {},
+): Promise<boolean> {
   const row = await prisma.emailCode.findFirst({ where: { email, purpose }, orderBy: { createdAt: 'desc' } })
   if (!row || row.expiresAt < new Date() || row.attempts >= MAX_CODE_ATTEMPTS) return false
   const { attempts } = await prisma.emailCode.update({ where: { id: row.id }, data: { attempts: { increment: 1 } } })
   if (attempts > MAX_CODE_ATTEMPTS) return false
   const expected = Buffer.from(row.codeHash, 'hex')
   const actual = Buffer.from(hashCode(purpose, email, row.salt, code), 'hex')
-  return actual.length === expected.length && timingSafeEqual(actual, expected)
+  const ok = actual.length === expected.length && timingSafeEqual(actual, expected)
+  if (ok && refundOnSuccess) {
+    await prisma.emailCode.update({ where: { id: row.id }, data: { attempts: { decrement: 1 } } }).catch(() => {})
+  }
+  return ok
 }
 
 /** A code is single-use: forget every code for this address and purpose. */

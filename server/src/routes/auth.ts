@@ -6,7 +6,7 @@ import { config } from '../config'
 import { prisma } from '../db'
 import { getMailer, type Mail } from '../mail/mailer'
 import { alreadyRegisteredMail, resetCodeMail, signupCodeMail } from '../mail/templates'
-import { emailOnlySchema, loginSchema, resetPasswordSchema, signupSchema } from '../schemas'
+import { emailOnlySchema, loginSchema, resetPasswordSchema, signupSchema, verifyCodeSchema } from '../schemas'
 import {
   codeRequestEmailLimiter,
   codeRequestIpLimiter,
@@ -129,7 +129,23 @@ authRouter.post('/password/forgot', codeRequestIpLimiter, codeRequestEmailLimite
   sendCode(req, res, 'reset', (email, hasAccount, code) => (hasAccount ? resetCodeMail(email, code) : null)),
 )
 
-/** Step 2: with the code, choose a new password. Every existing session is ended, so a stolen one stops working. */
+/**
+ * Step 2: is the code right? Lets the form check it on its own page and only then ask for the new password. Changes
+ * nothing, and a correct code keeps its guesses (see checkCode). The answer is the same for wrong codes and for
+ * addresses without an account.
+ */
+authRouter.post('/password/verify', verifyLimiter, async (req, res) => {
+  const input = verifyCodeSchema.parse(req.body)
+  const codeOk = await checkCode(input.email, 'reset', input.code, { refundOnSuccess: true })
+  const user = codeOk ? await prisma.user.findUnique({ where: { email: input.email }, select: { id: true } }) : null
+  if (!user) {
+    res.status(400).json(WRONG_CODE)
+    return
+  }
+  res.json({ ok: true })
+})
+
+/** Step 3: with the code, choose a new password. Every existing session is ended, so a stolen one stops working. */
 authRouter.post('/password/reset', verifyLimiter, async (req, res) => {
   const input = resetPasswordSchema.parse(req.body)
   const codeOk = await checkCode(input.email, 'reset', input.code)

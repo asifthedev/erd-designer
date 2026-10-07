@@ -408,6 +408,42 @@ describe.skipIf(!hasDb)('API (integration, real PostgreSQL)', () => {
       expect((await reset(fresh, signupCode)).status).toBe(400)
     })
 
+    it('checks the code on its own, before the new password is asked for, without using it up', async () => {
+      const { email } = await signUp()
+      await askResetCode(email)
+      const code = codeFor(email)
+      const wrong = code === '123456' ? '654321' : '123456'
+      const verify = (c: string) => post('/api/auth/password/verify', { email, code: c })
+
+      // 4 wrong tries and then the right one, twice: the right ones don't count against the guesses
+      for (let i = 0; i < 4; i++) expect((await verify(wrong)).status).toBe(400)
+      const ok = await verify(code)
+      expect(ok.status).toBe(200)
+      expect(ok.headers['set-cookie']).toBeUndefined() // nothing changes, nobody is logged in
+      expect((await verify(code)).status).toBe(200)
+      expect((await post('/api/auth/login', { email, password: PASSWORD })).status).toBe(200) // password untouched
+
+      // ...and the code still works for the real reset on the next page
+      expect((await reset(email, code)).status).toBe(200)
+      expect((await post('/api/auth/login', { email, password: NEW_PASSWORD })).status).toBe(200)
+      expect((await verify(code)).status).toBe(400) // used up now
+    })
+
+    it('verifying still kills a code after 5 wrong guesses, and says the same for unknown addresses', async () => {
+      const { email } = await signUp()
+      await askResetCode(email)
+      const right = codeFor(email)
+      const wrong = right === '123456' ? '654321' : '123456'
+      for (let i = 0; i < 5; i++) expect((await post('/api/auth/password/verify', { email, code: wrong })).status).toBe(400)
+      expect((await post('/api/auth/password/verify', { email, code: right })).status).toBe(400)
+
+      const unknown = await post('/api/auth/password/verify', { email: emailFor('ghost'), code: '123456' })
+      const known = await post('/api/auth/password/verify', { email, code: wrong })
+      expect(unknown.status).toBe(400)
+      expect(unknown.body).toEqual(known.body)
+      expect((await post('/api/auth/password/verify', { email, code: 'abc' })).status).toBe(400) // malformed
+    })
+
     it('does not reveal which addresses exist when resetting', async () => {
       const unknown = await reset(emailFor('ghost'), '123456')
       const { email } = await signUp()
