@@ -378,3 +378,35 @@ describe('side panel', () => {
     expect(st().selectedEdgeId).toBeNull()
   })
 })
+
+describe('hovering a table', () => {
+  it('lights up exactly the relation lines that touch it, and draws them on top', async () => {
+    const { useStore, deriveEdges } = await import('../store')
+    useStore.getState().loadSample()
+    const { nodes, manyToMany } = useStore.getState()
+    const id = (name: string) => nodes.find((n) => n.data.name === name)!.id
+    const hot = (hovered: string | null) =>
+      deriveEdges(nodes, manyToMany, null, hovered && id(hovered))
+        .filter((e) => (e.data as { hot: boolean }).hot)
+        .map((e) => [nodes.find((n) => n.id === e.source)!.data.name, nodes.find((n) => n.id === e.target)!.data.name].sort().join('-'))
+        .sort()
+
+    expect(hot(null)).toEqual([]) // nothing hovered: nothing lit
+    // posts is the hub of the sample: comments -> posts, posts -> users, and the posts <-> tags many-to-many
+    expect(hot('posts')).toEqual(['comments-posts', 'posts-tags', 'posts-users'])
+    expect(hot('comments')).toEqual(['comments-posts'])
+    expect(hot('users')).toEqual(['posts-users'])
+    expect(hot('tags')).toEqual(['posts-tags']) // the many-to-many link counts too
+
+    const lit = deriveEdges(nodes, manyToMany, null, id('comments'))
+    expect(lit.filter((e) => e.zIndex === 10)).toHaveLength(1)
+    expect(lit.filter((e) => e.zIndex === undefined)).toHaveLength(lit.length - 1)
+  })
+
+  it('is cleared when another diagram is loaded', async () => {
+    const { useStore } = await import('../store')
+    useStore.getState().setHoveredTable('some-table')
+    useStore.getState().loadWorkspace({ provider: 'postgresql', nodes: [], manyToMany: [] })
+    expect(useStore.getState().hoveredTableId).toBeNull()
+  })
+})

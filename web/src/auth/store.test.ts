@@ -83,7 +83,61 @@ beforeEach(() => {
   server.clock = 0
   server.seq = 0
   useStore.getState().loadSample()
-  useAuth.setState({ status: 'loading', user: null, ready: false, save: 'idle', diagrams: [], currentId: null, switching: false })
+  useAuth.setState({ status: 'loading', user: null, ready: false, save: 'idle', diagrams: [], currentId: null, switching: false, loading: null })
+})
+
+describe('start-up', () => {
+  it('runs init once even when called twice, so a new account gets one first ERD, not two', async () => {
+    const { api } = await import('./api')
+    vi.mocked(api).mockImplementationOnce(async () => ({ user })) // GET /auth/me (only one is expected)
+    await Promise.all([useAuth.getState().init(), useAuth.getState().init()])
+    expect(server.calls.filter((c) => c === 'POST /diagrams')).toHaveLength(1)
+    expect(useAuth.getState().diagrams).toHaveLength(1)
+  })
+})
+
+describe('loading indicators', () => {
+  it('say what the server is doing while it does it, and clear afterwards', async () => {
+    seed('a', 'A', 'table_a')
+    seed('b', 'B', 'table_b')
+    await signIn() // b open
+    expect(useAuth.getState().loading).toBeNull()
+
+    const opening = useAuth.getState().openDiagram('a')
+    expect(useAuth.getState().loading).toEqual({ kind: 'open', id: 'a' }) // set synchronously: no frozen-looking gap
+    await opening
+    expect(useAuth.getState().loading).toBeNull()
+
+    const creating = useAuth.getState().createDiagram()
+    expect(useAuth.getState().loading).toEqual({ kind: 'create' })
+    await creating
+    expect(useAuth.getState().loading).toBeNull()
+
+    const deleting = useAuth.getState().deleteDiagram('b')
+    expect(useAuth.getState().loading).toEqual({ kind: 'delete', id: 'b' })
+    await deleting
+    expect(useAuth.getState().loading).toBeNull()
+  })
+
+  it('also clear when the request fails, so the app never stays stuck on a spinner', async () => {
+    seed('a', 'A', 'table_a')
+    seed('b', 'B', 'table_b')
+    await signIn() // b open
+    server.failNext.add('GET /diagrams/a')
+    await useAuth.getState().openDiagram('a')
+    expect(useAuth.getState().loading).toBeNull()
+    expect(useAuth.getState().switching).toBe(false)
+    expect(useAuth.getState().ready).toBe(true)
+
+    server.failNext.add('POST /diagrams')
+    expect(await useAuth.getState().createDiagram()).toBeNull()
+    expect(useAuth.getState().loading).toBeNull()
+
+    server.failNext.add('DELETE /diagrams/a')
+    await useAuth.getState().deleteDiagram('a')
+    expect(useAuth.getState().loading).toBeNull()
+    expect(useAuth.getState().diagrams.some((d) => d.id === 'a')).toBe(true) // still there: the delete failed
+  })
 })
 
 describe('multiple ERDs', () => {

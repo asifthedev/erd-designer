@@ -7,7 +7,7 @@
 @import '@fontsource-variable/inter';
 @import 'tw-animate-css';
 
-/* shadcn/ui dark variant: <html class="dark"> is set for the dark themes and removed for the light one (see settings.ts). */
+/* shadcn/ui dark variant: the app is always dark, <html class="dark"> (index.html) switches it on. */
 @custom-variant dark (&:is(.dark *));
 
 /*
@@ -370,57 +370,4 @@ body {
   --color-hover: rgb(255 255 255 / 8%);
   --color-hover-strong: rgb(255 255 255 / 12%);
   --color-mask: rgb(30 31 41 / 70%);
-}
-
-/* Gruvbox Dark: warm, low-glare browns with retro accents. */
-[data-theme='gruvbox'] {
-  color-scheme: dark;
-  --color-canvas: #1d2021;
-  --color-grid: #232627;
-  --color-dot: #3c3836;
-  --color-surface: #282828;
-  --color-row: #32302f;
-  --color-line: #504945;
-  --color-edge: #8a7d70;
-  --color-ink: #ebdbb2;
-  --color-muted: #a89984;
-  --color-key: #83a598;
-  --color-num: #fabd2f;
-  --color-ok: #b8bb26;
-  --color-link: #b8bb26;
-  --color-link-flow: #e3e58a;
-  --color-danger: #fb4934;
-  --color-warning: #fe8019;
-  --color-primary-foreground: #1d2021;
-  --color-secondary: #3c3836;
-  --color-hover: rgb(255 255 255 / 8%);
-  --color-hover-strong: rgb(255 255 255 / 12%);
-  --color-mask: rgb(29 32 33 / 70%);
-}
-
-/* Solarized Light: the light theme many programmers swear by. Accents are a shade deeper than the original
-   so text stays readable on the cream background. */
-[data-theme='solarized-light'] {
-  color-scheme: light;
-  --color-canvas: #fdf6e3;
-  --color-grid: #f6efdb;
-  --color-dot: #d8d0b8;
-  --color-surface: #eee8d5;
-  --color-row: #f6f0de;
-  --color-line: #d6cfb8;
-  --color-edge: #93a1a1;
-  --color-ink: #52676e;
-  --color-muted: #6a7f85;
-  --color-key: #1a6fa8;
-  --color-num: #946d00;
-  --color-ok: #667700;
-  --color-link: #1f8a82;
-  --color-link-flow: #5fc9c0;
-  --color-danger: #d02d2a;
-  --color-warning: #c04612;
-  --color-primary-foreground: #fdf6e3;
-  --color-secondary: #e3dcc6;
-  --color-hover: rgb(0 0 0 / 6%);
-  --color-hover-strong: rgb(0 0 0 / 10%);
-  --color-mask: rgb(238 232 213 / 72%);
 }

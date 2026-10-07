@@ -12,7 +12,7 @@ import {
 const heading = 'mb-2 text-[12px] font-semibold tracking-wide text-muted uppercase'
 
 /** A theme card. It carries data-theme itself, so it shows that theme's real colours whatever is active. */
-function ThemeCard({ id, name, note, kind, active }: { id: ThemeId; name: string; note: string; kind: string; active: boolean }) {
+function ThemeCard({ id, name, note, active }: { id: ThemeId; name: string; note: string; active: boolean }) {
   const setTheme = useSettings((s) => s.setTheme)
   return (
     <button
@@ -40,9 +40,7 @@ function ThemeCard({ id, name, note, kind, active }: { id: ThemeId; name: string
         <span className="truncate">{name}</span>
         {active && <Check size={13} className="ml-auto shrink-0 text-key" aria-label="Selected" />}
       </div>
-      <div className="truncate text-[11px] text-muted">
-        {kind === 'light' ? 'Light' : 'Dark'} · {note}
-      </div>
+      <div className="truncate text-[11px] text-muted">{note}</div>
     </button>
   )
 }
@@ -90,7 +88,7 @@ export function SettingsMenu() {
           <h3 className={heading}>Theme</h3>
           <div className="grid grid-cols-2 gap-2">
             {THEMES.map((t) => (
-              <ThemeCard key={t.id} id={t.id} name={t.name} note={t.note} kind={t.kind} active={theme === t.id} />
+              <ThemeCard key={t.id} id={t.id} name={t.name} note={t.note} active={theme === t.id} />
             ))}
           </div>
         </section>

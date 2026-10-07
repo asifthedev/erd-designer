@@ -8,10 +8,8 @@ import { persist } from 'zustand/middleware'
  */
 
 export const THEMES = [
-  { id: 'midnight', name: 'Midnight', kind: 'dark', note: 'Default' },
-  { id: 'dracula', name: 'Dracula', kind: 'dark', note: 'Purple accents' },
-  { id: 'gruvbox', name: 'Gruvbox', kind: 'dark', note: 'Warm and low-glare' },
-  { id: 'solarized-light', name: 'Solarized Light', kind: 'light', note: 'Cream, easy on the eyes' },
+  { id: 'midnight', name: 'Midnight', note: 'Default' },
+  { id: 'dracula', name: 'Dracula', note: 'Purple accents' },
 ] as const
 export type ThemeId = (typeof THEMES)[number]['id']
 
@@ -69,14 +67,11 @@ export const useSettings = create<SettingsState>()(
   ),
 )
 
-export const isLightTheme = (theme: ThemeId) => THEMES.find((t) => t.id === theme)?.kind === 'light'
-
-/** Puts the settings on <html>: the theme attribute (colours), dark/light class, and the table font variables. */
+/** Puts the settings on <html>: the theme attribute (colours) and the table font variables. */
 export function applySettings(s: Settings) {
   if (typeof document === 'undefined') return
   const root = document.documentElement
   root.dataset.theme = s.theme
-  root.classList.toggle('dark', !isLightTheme(s.theme)) // shadcn's `dark:` variants follow this class
   root.style.setProperty('--table-font-family', TABLE_FONTS.find((f) => f.id === s.tableFont)!.family)
   root.style.setProperty('--table-font-weight', String(s.tableWeight))
 }

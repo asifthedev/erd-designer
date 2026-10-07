@@ -132,9 +132,13 @@ function TableNodeView({ id, data, selected }: NodeProps<TableNodeType>) {
   const renameTable = useStore((s) => s.renameTable)
   const setTableIcon = useStore((s) => s.setTableIcon)
   const addColumn = useStore((s) => s.addColumn)
+  const setHoveredTable = useStore((s) => s.setHoveredTable)
 
   return (
     <div
+      // While the pointer is on the table, its relation lines glow (see deriveEdges).
+      onPointerEnter={() => setHoveredTable(id)}
+      onPointerLeave={() => setHoveredTable(null)}
       className={`table-font group/table min-w-[680px] rounded-sm border bg-surface text-[16px] shadow-lg shadow-black/30 ${
         selected ? 'border-key' : 'border-line'
       }`}

@@ -8,7 +8,7 @@ left sidebar) and open them on any device.
 
 The gear icon in the toolbar opens **Settings** (saved in this browser):
 
-- **Theme**: Midnight (default), Dracula, Gruvbox (dark) and Solarized Light. The palettes are CSS tokens in
+- **Theme**: Midnight (default) or Dracula. The palettes are CSS tokens in
   `web/src/index.css`; a test checks that every theme defines the full set and keeps text readable (WCAG contrast).
 - **Table font**: Google Sans Code or JetBrains Mono, in **Light / Regular / Medium**. It only applies to the tables;
   the rest of the interface keeps its own font.

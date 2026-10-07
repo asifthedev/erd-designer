@@ -21,6 +21,7 @@ import { useAutosave } from '@/auth/useAutosave'
 import { AuthScreen } from '@/components/AuthScreen'
 import { ClearAllToasts } from '@/components/ClearAllToasts'
 import { DiagramSidebar } from '@/components/DiagramSidebar'
+import { LoadingVeil } from '@/components/LoadingVeil'
 import { SettingsMenu } from '@/components/SettingsMenu'
 import { UserMenu } from '@/components/UserMenu'
 import { Toaster } from '@/components/ui/sonner'
@@ -32,7 +33,6 @@ import { ConnectionLine, RelationEdge } from './components/RelationEdge'
 import { RelationCard } from './components/RelationCard'
 import { TableNode } from './components/TableNode'
 import { PROVIDERS } from './core/model'
-import { isLightTheme, useSettings } from './settings'
 import { deriveEdges, M2M_PREFIX, SIDEBAR_MAX, SIDEBAR_MIN, useStore } from './store'
 
 // Registered once at module level: React Flow re-mounts every node if these objects change identity.
@@ -45,6 +45,7 @@ function Canvas() {
   const manyToMany = useStore((s) => s.manyToMany)
   const removeManyToMany = useStore((s) => s.removeManyToMany)
   const selectedEdgeId = useStore((s) => s.selectedEdgeId)
+  const hoveredTableId = useStore((s) => s.hoveredTableId)
   const onNodesChange = useStore((s) => s.onNodesChange)
   const connect = useStore((s) => s.connect)
   const selectEdge = useStore((s) => s.selectEdge)
@@ -60,7 +61,6 @@ function Canvas() {
   const hasClipboard = useStore((s) => s.clipboard !== null)
   const { screenToFlowPosition, fitView } = useReactFlow()
   const authed = useAuth((s) => s.status === 'authed')
-  const light = useSettings((s) => isLightTheme(s.theme))
   const currentId = useAuth((s) => s.currentId)
   const listOpen = useStore((s) => s.listOpen)
   const toggleList = useStore((s) => s.toggleList)
@@ -77,8 +77,8 @@ function Canvas() {
 
   // Edges are never stored: they are recomputed from the foreign keys on the columns (and many-to-many links).
   const edges = useMemo(
-    () => deriveEdges(nodes, manyToMany, selectedEdgeId),
-    [nodes, manyToMany, selectedEdgeId],
+    () => deriveEdges(nodes, manyToMany, selectedEdgeId, hoveredTableId),
+    [nodes, manyToMany, selectedEdgeId, hoveredTableId],
   )
 
   // A relation id is either `m2m:<linkId>` (many-to-many) or `<tableId>:<columnId>` (a foreign key column).
@@ -235,7 +235,7 @@ function Canvas() {
             items: [{ label: 'Paste', shortcut: 'Ctrl V', onSelect: () => pasteTables(at) }],
           })
         }}
-        colorMode={light ? 'light' : 'dark'}
+        colorMode="dark"
         minZoom={0.2}
         // Open at exactly 100%: fitView centres the tables, and min = max = 1 pins the zoom level.
         fitView
@@ -416,8 +416,9 @@ function Editor() {
           <Toolbar />
           <div className="flex min-h-0 flex-1">
             {showList && <DiagramSidebar />}
-            <main className="min-w-0 flex-1" onPointerDownCapture={closeOnCanvasClick}>
+            <main className="relative min-w-0 flex-1" onPointerDownCapture={closeOnCanvasClick}>
               <Canvas />
+              <LoadingVeil />
             </main>
             {(codeOpen || hasRelation) && (
               <aside

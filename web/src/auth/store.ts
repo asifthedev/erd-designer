@@ -13,6 +13,8 @@ export type DiagramMeta = { id: string; title: string; updatedAt: string }
 /** The server refuses more than this per account (keep in sync with MAX_DIAGRAMS_PER_USER there). */
 export const MAX_DIAGRAMS = 50
 const DEFAULT_TITLE = 'Untitled diagram'
+/** What the server round trip is for, so the UI can say so (a spinner on the row / button, a note over the canvas). */
+export type Loading = { kind: 'open' | 'create' | 'delete'; id?: string }
 const BLANK: Workspace = { provider: 'postgresql', nodes: [], manyToMany: [] }
 
 type AuthState = {
@@ -27,6 +29,8 @@ type AuthState = {
   currentId: string | null
   /** An ERD is being opened / created / deleted: further switches are ignored until it finishes. */
   switching: boolean
+  /** The same moment, with detail for the loading indicators (null when idle). */
+  loading: Loading | null
 
   init: () => Promise<void>
   login: (email: string, password: string) => Promise<void>
@@ -48,13 +52,16 @@ type AuthState = {
 let lastSaved = ''
 const snapshot = () => JSON.stringify(toWorkspace(useStore.getState()))
 
+/** init() runs once per page load, even if the component that calls it mounts twice (React StrictMode in dev). */
+let initPromise: Promise<void> | undefined
+
 const byRecent = (a: DiagramMeta, b: DiagramMeta) => b.updatedAt.localeCompare(a.updatedAt)
 
 export const useAuth = create<AuthState>()((set, get) => {
   /** Shows a failure; an expired session sends the person back to the sign-in screen instead. */
   function fail(e: unknown, title: string, id?: string) {
     if (e instanceof ApiError && e.status === 401) {
-      set({ status: 'anonymous', user: null, ready: false, save: 'idle', switching: false })
+      set({ status: 'anonymous', user: null, ready: false, save: 'idle', switching: false, loading: null })
       toast.error('Your session has expired', {
         description: 'Log in again to keep saving.',
         closeButton: true,
@@ -89,7 +96,7 @@ export const useAuth = create<AuthState>()((set, get) => {
 
   /** Signed in: open the most recently edited ERD, or turn what is on the canvas into the first one. */
   async function enter(user: AuthUser) {
-    set({ status: 'authed', user, ready: false, save: 'idle', diagrams: [], currentId: null, switching: false })
+    set({ status: 'authed', user, ready: false, save: 'idle', diagrams: [], currentId: null, switching: false, loading: null })
     try {
       const { diagrams } = await api<{ diagrams: DiagramMeta[] }>('/diagrams')
       if (!diagrams.length) {
@@ -121,17 +128,19 @@ export const useAuth = create<AuthState>()((set, get) => {
     diagrams: [],
     currentId: null,
     switching: false,
+    loading: null,
 
-    init: async () => {
-      try {
-        const { user } = await api<{ user: AuthUser | null }>('/auth/me')
-        if (user) await enter(user)
-        else set({ status: 'anonymous' })
-      } catch {
-        // API unreachable: still let the person use the editor locally.
-        set({ status: 'anonymous' })
-      }
-    },
+    init: () =>
+      (initPromise ??= (async () => {
+        try {
+          const { user } = await api<{ user: AuthUser | null }>('/auth/me')
+          if (user) await enter(user)
+          else set({ status: 'anonymous' })
+        } catch {
+          // API unreachable: still let the person use the editor locally.
+          set({ status: 'anonymous' })
+        }
+      })()),
 
     login: async (email, password) => {
       const { user } = await api<{ user: AuthUser }>('/auth/login', { body: { email, password } })
@@ -158,6 +167,7 @@ export const useAuth = create<AuthState>()((set, get) => {
         diagrams: [],
         currentId: null,
         switching: false,
+        loading: null,
       })
     },
 
@@ -190,7 +200,7 @@ export const useAuth = create<AuthState>()((set, get) => {
 
     openDiagram: async (id) => {
       if (get().switching || id === get().currentId) return
-      set({ switching: true })
+      set({ switching: true, loading: { kind: 'open', id } })
       try {
         if (!(await flush())) return
         set({ ready: false }) // the canvas is about to show another ERD: nothing may be saved onto the wrong one
@@ -201,13 +211,13 @@ export const useAuth = create<AuthState>()((set, get) => {
           fail(e, 'Could not open that diagram')
         }
       } finally {
-        set({ switching: false })
+        set({ switching: false, loading: null })
       }
     },
 
     createDiagram: async () => {
       if (get().switching) return null
-      set({ switching: true })
+      set({ switching: true, loading: { kind: 'create' } })
       try {
         if (!(await flush())) return null
         const { diagram } = await api<{ diagram: DiagramMeta }>('/diagrams', {
@@ -221,7 +231,7 @@ export const useAuth = create<AuthState>()((set, get) => {
         fail(e, 'Could not create the diagram')
         return null
       } finally {
-        set({ switching: false })
+        set({ switching: false, loading: null })
       }
     },
 
@@ -242,7 +252,7 @@ export const useAuth = create<AuthState>()((set, get) => {
 
     deleteDiagram: async (id) => {
       if (get().switching) return
-      set({ switching: true })
+      set({ switching: true, loading: { kind: 'delete', id } })
       try {
         const wasOpen = id === get().currentId
         if (wasOpen) set({ ready: false }) // its pending edits are going away with it
@@ -274,7 +284,7 @@ export const useAuth = create<AuthState>()((set, get) => {
           fail(e, 'Could not open another diagram')
         }
       } finally {
-        set({ switching: false })
+        set({ switching: false, loading: null })
       }
     },
   }

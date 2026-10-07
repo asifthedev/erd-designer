@@ -68,6 +68,8 @@ type State = {
   pasteTables: (at?: { x: number; y: number }) => void
   /** Column row last clicked; the Delete key removes it. Not persisted. */
   selectedColumn: { tableId: string; columnId: string } | null
+  /** The table the pointer is over: its relation lines glow. Not persisted. */
+  hoveredTableId: string | null
   setSelectedColumn: (c: { tableId: string; columnId: string } | null) => void
   /** Whether the schema.prisma side panel is shown. */
   codeOpen: boolean
@@ -111,6 +113,7 @@ type State = {
   convertToJunction: (id: string) => void
   toggleCode: () => void
   toggleList: () => void
+  setHoveredTable: (id: string | null) => void
   /** Close the whole side panel: the code view and the relation settings. */
   closeSidebar: () => void
   setSidebarWidth: (w: number) => void
@@ -333,6 +336,7 @@ export const useStore = create<State>()(
       ...sampleWorkspace(),
       pendingM2m: null,
       selectedColumn: null,
+      hoveredTableId: null,
       clipboard: null,
       pasteCount: 0,
       clipboardIsCut: false,
@@ -648,6 +652,7 @@ export const useStore = create<State>()(
       closeSidebar: () => set({ codeOpen: false, selectedEdgeId: null }),
       toggleCode: () => set((s) => ({ codeOpen: !s.codeOpen })),
       toggleList: () => set((s) => ({ listOpen: !s.listOpen })),
+      setHoveredTable: (hoveredTableId) => set({ hoveredTableId }),
       copyTables: (ids) => {
         const picked = get().nodes.filter((n) => ids.includes(n.id))
         if (!picked.length) return
@@ -712,6 +717,7 @@ export const useStore = create<State>()(
           manyToMany: w.manyToMany,
           selectedEdgeId: null,
           selectedColumn: null,
+          hoveredTableId: null,
           pendingM2m: null,
         }),
       loadSample: () => set({ ...sampleWorkspace(), selectedEdgeId: null }),
@@ -757,8 +763,14 @@ export function deriveEdges(
   nodes: TableNodeType[],
   manyToMany: ManyToMany[],
   selectedEdgeId: string | null,
+  hoveredTableId: string | null = null,
 ): Edge[] {
   const edges: Edge[] = []
+  /** `hot` edges glow: the ones touching the hovered table. They are also drawn above the others. */
+  const hotness = (source: string, target: string) => {
+    const hot = hoveredTableId !== null && (source === hoveredTableId || target === hoveredTableId)
+    return { hot, zIndex: hot ? 10 : undefined }
+  }
   for (const l of manyToMany) {
     const id = M2M_PREFIX + l.id
     const a = nodes.find((n) => n.id === l.aTableId)
@@ -773,7 +785,8 @@ export function deriveEdges(
       target: l.bTableId,
       targetHandle: handleId(M2M_HANDLE, sb),
       selected: id === selectedEdgeId,
-      data: { kind: 'many-to-many', bend: l.bend },
+      zIndex: hotness(l.aTableId, l.bTableId).zIndex,
+      data: { kind: 'many-to-many', bend: l.bend, hot: hotness(l.aTableId, l.bTableId).hot },
     })
   }
   for (const n of nodes) {
@@ -786,7 +799,12 @@ export function deriveEdges(
       edges.push({
         id,
         type: 'relation',
-        data: { kind: isOneToOne(n.data, c) ? 'one-to-one' : 'one-to-many', bend: c.references.bend },
+        zIndex: hotness(n.id, c.references.tableId).zIndex,
+        data: {
+          kind: isOneToOne(n.data, c) ? 'one-to-one' : 'one-to-many',
+          bend: c.references.bend,
+          hot: hotness(n.id, c.references.tableId).hot,
+        },
         source: n.id,
         sourceHandle: handleId(c.id, ss),
         target: c.references.tableId,

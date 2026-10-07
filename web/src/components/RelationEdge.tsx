@@ -132,14 +132,16 @@ export function RelationEdge(props: EdgeProps) {
   const setRelationBend = useStore((s) => s.setRelationBend)
   const selectEdge = useStore((s) => s.selectEdge)
   const { screenToFlowPosition } = useReactFlow()
-  const { kind = 'one-to-many', bend: savedBend } = (data ?? {}) as { kind?: RelationKind; bend?: Point }
+  const { kind = 'one-to-many', bend: savedBend, hot = false } = (data ?? {}) as { kind?: RelationKind; bend?: Point; hot?: boolean }
+  // Lit = selected, or touching the table the pointer is over: green line, glowing current.
+  const lit = selected || hot
   // While dragging, the shape lives here; it is saved once, when the pointer is released.
   const [liveBend, setLiveBend] = useState<Point | null>(null)
   const bend = liveBend ?? savedBend
   const path = relationPath(sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, bend)
   const [src, dst] = ENDS[kind]
-  const stroke = selected ? 'var(--color-link)' : 'var(--color-edge)'
-  const width = selected ? 2 : 1.5
+  const stroke = lit ? 'var(--color-link)' : 'var(--color-edge)'
+  const width = lit ? 2 : 1.5
   const dir = (p: Position) => (p === Position.Right ? 1 : -1) as 1 | -1
   const { x: midX, y: midY } = midpoint(
     sourceX,
@@ -212,9 +214,9 @@ export function RelationEdge(props: EdgeProps) {
         className="nodrag nopan cursor-grab active:cursor-grabbing"
         onPointerDown={startDrag}
       />
-      {/* Glowing "current" running along the line; shown by CSS on hover, and always while selected. */}
+      {/* Glowing "current" running along the line; shown by CSS on hover, and always while lit (selected, or touching the hovered table). */}
       {(['relation-flow-halo-wide', 'relation-flow-halo', 'relation-flow'] as const).map((cls) => (
-        <path key={cls} d={path} className={`${cls} ${selected ? 'is-selected' : ''}`} />
+        <path key={cls} d={path} className={`${cls} ${lit ? 'is-selected' : ''}`} />
       ))}
       <g style={{ color: stroke, strokeWidth: width }} className="relation-glyphs">
         <Glyph

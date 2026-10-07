@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_SETTINGS, FONT_WEIGHTS, isLightTheme, sanitize, TABLE_FONTS, THEMES } from './settings'
+import { DEFAULT_SETTINGS, FONT_WEIGHTS, sanitize, TABLE_FONTS, THEMES } from './settings'
 
 const css = readFileSync(path.resolve(import.meta.dirname, 'index.css'), 'utf8')
 
@@ -40,7 +40,7 @@ describe('themes', () => {
     const tokens = themeTokens(id)
     for (const key of reference) expect(tokens[key], `${id} is missing ${key}`).toBeDefined()
     expect(Object.keys(tokens).sort()).toEqual([...reference].sort()) // and adds nothing the others lack
-    expect(tokens['color-scheme']).toBe(isLightTheme(id) ? 'light' : 'dark')
+    expect(tokens['color-scheme']).toBe('dark')
   })
 
   it.each(THEMES.map((t) => t.id))('%s keeps text readable (WCAG contrast)', (id) => {
@@ -59,10 +59,9 @@ describe('themes', () => {
     expect(c('line', 'canvas'), 'borders are visible against the canvas').toBeGreaterThanOrEqual(1.15)
   })
 
-  it('offers two more dark themes and one light theme, with Midnight as the default', () => {
+  it('offers Midnight (the default) and Dracula', () => {
     expect(DEFAULT_SETTINGS.theme).toBe('midnight')
-    expect(THEMES.filter((t) => t.kind === 'dark')).toHaveLength(3)
-    expect(THEMES.filter((t) => t.kind === 'light')).toHaveLength(1)
+    expect(THEMES.map((t) => t.id)).toEqual(['midnight', 'dracula'])
   })
 })
 
@@ -104,6 +103,8 @@ describe('sanitize', () => {
     for (const bad of [null, undefined, 'x', 42, [], {}, { theme: 'neon', tableFont: 'comic-sans', tableWeight: 900 }, { theme: {}, tableWeight: '500' }]) {
       expect(sanitize(bad)).toEqual(DEFAULT_SETTINGS)
     }
-    expect(sanitize({ theme: 'gruvbox', tableFont: 'nope' })).toEqual({ ...DEFAULT_SETTINGS, theme: 'gruvbox' })
+    expect(sanitize({ theme: 'dracula', tableFont: 'nope' })).toEqual({ ...DEFAULT_SETTINGS, theme: 'dracula' })
+    // a theme that no longer exists (it was removed) falls back to the default instead of breaking the app
+    expect(sanitize({ theme: 'gruvbox', tableWeight: 500 })).toEqual({ ...DEFAULT_SETTINGS, tableWeight: 500 })
   })
 })

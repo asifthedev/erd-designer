@@ -1,6 +1,6 @@
-import { PanelLeftClose, Pencil, Plus, Trash2 } from 'lucide-react'
+import { LoaderCircle, PanelLeftClose, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { MAX_DIAGRAMS, useAuth, type DiagramMeta } from '@/auth/store'
+import { MAX_DIAGRAMS, useAuth, type DiagramMeta, type Loading } from '@/auth/store'
 import { useStore } from '../store'
 
 /** Inline title editor: Enter or leaving the field saves, Escape cancels. */
@@ -40,27 +40,31 @@ function Row({
   diagram,
   active,
   editing,
-  disabled,
+  loading,
   onEdit,
 }: {
   diagram: DiagramMeta
   active: boolean
   editing: boolean
-  disabled: boolean
+  /** What the server is doing right now (null when idle). Clicks are ignored meanwhile. */
+  loading: Loading | null
   onEdit: (editing: boolean) => void
 }) {
   const openDiagram = useAuth((s) => s.openDiagram)
   const renameDiagram = useAuth((s) => s.renameDiagram)
   const deleteDiagram = useAuth((s) => s.deleteDiagram)
 
+  // This very row is being opened or deleted: it gets the spinner, the others just wait quietly.
+  const working = loading?.id === diagram.id
   const iconBtn =
     'grid size-6 shrink-0 cursor-pointer place-items-center rounded-sm text-muted opacity-0 outline-none hover:bg-hover-strong hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100'
 
   return (
     <li
+      aria-busy={working || undefined}
       className={`group flex items-center gap-1 rounded-md px-1.5 py-1 ${
-        active ? 'bg-key/15 text-key' : 'text-ink hover:bg-hover'
-      } ${disabled ? 'pointer-events-none opacity-60' : ''}`}
+        active || (working && loading?.kind === 'open') ? 'bg-key/15 text-key' : 'text-ink hover:bg-hover'
+      } ${loading ? 'pointer-events-none' : ''} ${loading && !working ? 'opacity-60' : ''}`}
     >
       {editing ? (
         <TitleInput
@@ -82,36 +86,58 @@ function Row({
           >
             {diagram.title}
           </button>
-          <button type="button" title="Rename" aria-label={`Rename ${diagram.title}`} className={iconBtn} onClick={() => onEdit(true)}>
-            <Pencil size={13} />
-          </button>
-          <button
-            type="button"
-            title="Delete"
-            aria-label={`Delete ${diagram.title}`}
-            className={`${iconBtn} hover:text-danger!`}
-            onClick={() => {
-              if (window.confirm(`Delete "${diagram.title}"? This can't be undone.`)) void deleteDiagram(diagram.id)
-            }}
-          >
-            <Trash2 size={13} />
-          </button>
+          {working ? (
+            <LoaderCircle
+              size={15}
+              className="mr-1 shrink-0 animate-spin"
+              aria-label={loading?.kind === 'delete' ? 'Deleting' : 'Opening'}
+            />
+          ) : (
+            <>
+              <button type="button" title="Rename" aria-label={`Rename ${diagram.title}`} className={iconBtn} onClick={() => onEdit(true)}>
+                <Pencil size={13} />
+              </button>
+              <button
+                type="button"
+                title="Delete"
+                aria-label={`Delete ${diagram.title}`}
+                className={`${iconBtn} hover:text-danger!`}
+                onClick={() => {
+                  if (window.confirm(`Delete "${diagram.title}"? This can't be undone.`)) void deleteDiagram(diagram.id)
+                }}
+              >
+                <Trash2 size={13} />
+              </button>
+            </>
+          )}
         </>
       )}
     </li>
   )
 }
 
-/** Left panel with the account's ERDs: open one, create, rename (double-click) or delete. Collapses with ». */
+/** Grey pulsing bars shown until the list arrives from the server. */
+function ListSkeleton() {
+  return (
+    <ul className="flex flex-col gap-1.5 p-1" aria-label="Loading your ERDs" aria-busy="true">
+      {[70, 52, 62].map((w) => (
+        <li key={w} className="h-7 animate-pulse rounded-md bg-hover" style={{ width: `${w + 20}%` }} />
+      ))}
+    </ul>
+  )
+}
+
+/** Left panel with the account's ERDs: open one, create, rename (double-click) or delete. Collapses with «. */
 export function DiagramSidebar() {
   const diagrams = useAuth((s) => s.diagrams)
   const currentId = useAuth((s) => s.currentId)
-  const switching = useAuth((s) => s.switching)
+  const loading = useAuth((s) => s.loading)
   const createDiagram = useAuth((s) => s.createDiagram)
   const toggleList = useStore((s) => s.toggleList)
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const full = diagrams.length >= MAX_DIAGRAMS
+  const creating = loading?.kind === 'create'
 
   const create = async () => {
     const id = await createDiagram()
@@ -136,19 +162,22 @@ export function DiagramSidebar() {
       <div className="px-2 pt-2">
         <button
           type="button"
-          disabled={switching || full}
+          disabled={!!loading || full}
+          aria-busy={creating || undefined}
           onClick={() => void create()}
           title={full ? `You can keep up to ${MAX_DIAGRAMS} diagrams` : 'Create a new, blank ERD'}
-          className="flex w-full cursor-pointer items-center gap-2 rounded-md border border-line px-2.5 py-1.5 text-muted hover:border-key hover:text-key disabled:cursor-not-allowed disabled:opacity-50"
+          className={`flex w-full cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 hover:border-key hover:text-key disabled:cursor-not-allowed ${
+            creating ? 'border-key text-key' : 'border-line text-muted disabled:opacity-50'
+          }`}
         >
-          <Plus size={15} />
-          New ERD
+          {creating ? <LoaderCircle size={15} className="animate-spin" aria-hidden /> : <Plus size={15} />}
+          {creating ? 'Creating…' : 'New ERD'}
         </button>
       </div>
 
       <nav className="min-h-0 flex-1 overflow-y-auto p-2">
         {diagrams.length === 0 ? (
-          <p className="px-2 py-1 text-muted">Loading…</p>
+          <ListSkeleton />
         ) : (
           <ul className="flex flex-col gap-0.5">
             {diagrams.map((d) => (
@@ -157,7 +186,7 @@ export function DiagramSidebar() {
                 diagram={d}
                 active={d.id === currentId}
                 editing={editingId === d.id}
-                disabled={switching}
+                loading={loading}
                 onEdit={(on) => setEditingId(on ? d.id : null)}
               />
             ))}
