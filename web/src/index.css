@@ -1,0 +1,301 @@
+@layer theme, base, xyflow, components, utilities;
+
+@import 'tailwindcss';
+@import '@xyflow/react/dist/style.css' layer(xyflow);
+@import '@fontsource-variable/google-sans-code';
+@import '@fontsource-variable/inter';
+@import 'tw-animate-css';
+
+/* shadcn/ui dark variant: the app is always dark, <html class="dark"> switches it on. */
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * "Midnight" palette, chosen to be easy on the eyes for long sessions: a deep blue-slate instead of neutral grey,
+ * off-white text (not pure white) and soft, slightly desaturated accents. Every colour in the app comes from here.
+ */
+@theme {
+  --font-mono: 'Google Sans Code Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  /* Plain UI text (delete menu, warnings); tables, field names and code use the mono font. */
+  --font-ui: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+
+  --color-canvas: #14161c;
+  --color-grid: #1a1d25;
+  --color-dot: #2b303b;
+  --color-surface: #1d2029;
+  --color-row: #222631;
+  --color-line: #313745;
+  --color-edge: #566074;
+  --color-ink: #d5dae5;
+  --color-muted: #8590a4;
+  --color-key: #7aa2f7;
+  --color-num: #e0af68;
+  --color-ok: #9ece6a;
+  /* Relation line when hovered / selected, and the lighter tint of the current flowing along it. */
+  --color-link: #1ded83;
+  --color-link-flow: #b9ffd9;
+  --color-danger: #f7768e;
+  --color-warning: #ff9e64;
+
+  /* shadcn/ui tokens, mapped onto the palette above so ui/* components match the app. */
+  --color-background: var(--color-canvas);
+  --color-foreground: var(--color-ink);
+  --color-popover: var(--color-surface);
+  --color-popover-foreground: var(--color-ink);
+  --color-border: var(--color-line);
+  --color-input: var(--color-line);
+  --color-ring: var(--color-key);
+  --color-accent: rgb(255 255 255 / 9%);
+  --color-accent-foreground: var(--color-key);
+  --color-muted-foreground: var(--color-muted);
+  --color-destructive: var(--color-danger);
+  --color-primary: var(--color-key);
+  --color-primary-foreground: #0e1420;
+  --color-secondary: #2a2f3b;
+  --color-secondary-foreground: var(--color-ink);
+}
+
+/* shadcn/ui components use plain `border`: give it the theme's line colour instead of currentColor. */
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html {
+  color-scheme: dark;
+  /* Slim scrollbars in the palette instead of the browser's bright default ones. */
+  scrollbar-color: var(--color-line) transparent;
+  scrollbar-width: thin;
+}
+
+::selection {
+  background: rgb(122 162 247 / 30%);
+}
+
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-ui);
+  font-size: 15px;
+}
+
+/* Unlayered, so these win over the xyflow defaults. */
+.react-flow {
+  --xy-background-color: var(--color-canvas);
+  --xy-edge-stroke: var(--color-edge);
+  --xy-edge-stroke-selected: var(--color-key);
+  --xy-edge-stroke-width: 1.5;
+  --xy-handle-background-color: var(--color-edge);
+  --xy-handle-border-color: var(--color-canvas);
+  --xy-connectionline-stroke: var(--color-key);
+  --xy-controls-button-background-color: var(--color-surface);
+  --xy-controls-button-background-color-hover: var(--color-row);
+  --xy-controls-button-color: var(--color-ink);
+  --xy-controls-button-color-hover: var(--color-ink);
+  --xy-controls-button-border-color: var(--color-line);
+  --xy-minimap-background-color: var(--color-surface);
+  --xy-minimap-mask-background-color: rgb(20 22 28 / 70%);
+  --xy-selection-background-color: rgb(122 162 247 / 8%);
+  --xy-selection-border: 1px dotted var(--color-key);
+}
+
+/* A column involved in a relation problem: red tint + a few blinks when it appears. */
+@keyframes issue-blink {
+  0%,
+  100% {
+    background-color: rgb(247 118 142 / 12%);
+  }
+  50% {
+    background-color: rgb(247 118 142 / 50%);
+  }
+}
+
+.issue-row {
+  background-color: rgb(247 118 142 / 12%);
+  box-shadow: inset 3px 0 0 var(--color-danger);
+  animation: issue-blink 0.7s ease-in-out 4;
+}
+
+/* Relation lines: green on hover / when selected, with a glowing current flowing source -> target. */
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--color-link) !important;
+}
+
+/* Cardinality glyphs (bar / crow's foot / ring / "1" "n") follow the edge colour, green on hover. */
+.relation-end {
+  fill: none;
+  stroke: currentColor;
+}
+
+.relation-ring {
+  fill: var(--color-canvas);
+}
+
+.relation-label {
+  fill: currentColor;
+  stroke: none;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.react-flow__edge:hover .relation-glyphs {
+  color: var(--color-link) !important;
+}
+
+.relation-flow,
+.relation-flow-halo,
+.relation-flow-halo-wide {
+  fill: none;
+  stroke: var(--color-link-flow);
+  stroke-linecap: round;
+  /* Small thin ovals far apart; the period (7 + 55 = 62) must match the animation offset below. */
+  stroke-dasharray: 7 55;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  animation: relation-flow 2.2s linear infinite;
+}
+
+.relation-flow {
+  stroke-width: 2.6;
+}
+
+/* The glow is two wider, see-through copies of the dashes underneath. A CSS filter (drop-shadow) here would
+   be re-rendered every animation frame, which is very slow on machines without GPU rendering. */
+.relation-flow-halo {
+  stroke: var(--color-link);
+  stroke-width: 6;
+}
+
+.relation-flow-halo-wide {
+  stroke: var(--color-link);
+  stroke-width: 11;
+}
+
+.react-flow__edge:hover .relation-flow,
+.relation-flow.is-selected {
+  opacity: 1;
+}
+
+.react-flow__edge:hover .relation-flow-halo,
+.relation-flow-halo.is-selected {
+  opacity: 0.4;
+}
+
+.react-flow__edge:hover .relation-flow-halo-wide,
+.relation-flow-halo-wide.is-selected {
+  opacity: 0.16;
+}
+
+@keyframes relation-flow {
+  to {
+    stroke-dashoffset: -62;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .relation-flow,
+  .relation-flow-halo,
+  .relation-flow-halo-wide {
+    animation: none;
+  }
+}
+
+/*
+ * Toasts: a rounded card on the dark surface. The right side carries a soft wash of the message's colour
+ * that fades out towards the left; the status icon is a filled round badge.
+ */
+[data-sonner-toaster] [data-sonner-toast] {
+  --tone: var(--color-edge);
+  --toast-close-button-start: unset;
+  --toast-close-button-end: 10px;
+  --toast-close-button-transform: none;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 14px 48px 14px 16px;
+  align-items: flex-start !important;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+}
+
+[data-sonner-toast][data-type='success'] {
+  --tone: var(--color-link);
+}
+
+[data-sonner-toast][data-type='error'] {
+  --tone: var(--color-danger);
+}
+
+[data-sonner-toast][data-type='warning'] {
+  --tone: var(--color-warning);
+}
+
+[data-sonner-toast][data-type='info'] {
+  --tone: var(--color-key);
+}
+
+[data-sonner-toaster] [data-sonner-toast][data-styled='true'] {
+  border-color: color-mix(in srgb, var(--tone) 38%, var(--color-border));
+}
+
+[data-sonner-toast]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent 35%, color-mix(in srgb, var(--tone) 18%, transparent));
+}
+
+[data-sonner-toast] [data-title] {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+[data-sonner-toast] [data-description] {
+  color: var(--color-muted-foreground);
+  font-size: 13.5px;
+}
+
+[data-sonner-toast] [data-close-button] {
+  /* Sonner places it top-left by default; the card keeps it on the right, like an action button. */
+  left: auto !important;
+  right: 12px !important;
+  transform: none !important;
+  top: 17px !important;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 8%);
+  color: var(--color-muted-foreground);
+}
+
+[data-sonner-toast] [data-close-button]:hover {
+  background: rgb(255 255 255 / 16%);
+  color: var(--color-ink);
+}
+
+/* Icon and close button sit on the first line (the title), not centred on the whole card. */
+[data-sonner-toast] [data-icon] {
+  align-self: flex-start !important;
+  margin-top: 3px !important;
+  height: 20px;
+  align-items: center;
+}
+
+[data-sonner-toast] [data-title] {
+  line-height: 20px;
+}
+
+/* Keep long titles from running under the close button. */
+[data-sonner-toast] [data-content] {
+  padding-right: 32px;
+}

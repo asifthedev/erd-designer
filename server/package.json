@@ -1,0 +1,40 @@
+{
+  "name": "server",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Express + Prisma 7 API for erd.designer: accounts, sessions and saved diagrams.",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^18.0.6",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.1",
+    "helmet": "^8.3.0",
+    "pg": "^8.23.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.4",
+    "@types/pg": "^8.23.1",
+    "@types/supertest": "^7.2.1",
+    "prisma": "^7.10.0",
+    "supertest": "^7.3.1",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0",
+    "vitest": "^5.0.3"
+  }
+}

@@ -1,0 +1,27 @@
+# Dependencies & build output
+node_modules
+dist
+dist-ssr
+api/_server.mjs
+*.tsbuildinfo
+
+# Generated Prisma client (rebuilt by `npm run build` / `npm run db:generate -w server`)
+server/generated
+
+# Secrets: never commit these. Only the *.example files are tracked.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local tooling / editors / OS
+.vercel
+.claude
+.agents
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.log
+*.local
