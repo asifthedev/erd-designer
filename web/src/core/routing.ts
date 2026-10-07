@@ -43,7 +43,8 @@ export function stubLength(sx: number, sDir: Dir, tx: number, tDir: Dir): number
 
 /**
  * X of the vertical lane. By default halfway between the two stubs; for a bracket, just outside both. A drag
- * (`bend`) moves it sideways but never into a stub, so the glyphs always sit on straight line.
+ * (`bend`) moves it sideways by exactly that much, wherever the user puts it: the automatic route is the
+ * default, never a limit. (Only the automatic route is guaranteed to keep clear of the tables.)
  *
  * Lines between the same two columns would otherwise share one lane and read as a single line, so each gets a small
  * offset derived from its target row (stable across renders, different per relation).
@@ -52,11 +53,11 @@ export function routeX(sx: number, sDir: Dir, tx: number, ty: number, tDir: Dir,
   const stub = stubLength(sx, sDir, tx, tDir)
   const ax = sx + sDir * stub
   const bx = tx + tDir * stub
-  const spread = ((Math.round(ty / 42) % 5) - 2) * 14
-  let x = sDir === tDir ? (sDir === 1 ? Math.max(ax, bx) + TURN : Math.min(ax, bx) - TURN) : (ax + bx) / 2 + spread
-  x += bend?.x ?? 0
-  x = sDir === 1 ? Math.max(x, ax) : Math.min(x, ax)
-  return tDir === 1 ? Math.max(x, bx) : Math.min(x, bx)
+  // The spread may only use the room there is between the stubs (none at all when the gap is small).
+  const room = Math.abs(bx - ax) / 2
+  const spread = Math.max(-room, Math.min(room, ((Math.round(ty / 42) % 5) - 2) * 14))
+  const auto = sDir === tDir ? (sDir === 1 ? Math.max(ax, bx) + TURN : Math.min(ax, bx) - TURN) : (ax + bx) / 2 + spread
+  return auto + (bend?.x ?? 0)
 }
 
 /** The corners of the route from the source border point to the target border point. */

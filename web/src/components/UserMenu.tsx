@@ -1,7 +1,9 @@
 import { Check, CloudAlert, CloudUpload, LoaderCircle, LogIn, LogOut } from 'lucide-react'
+import { useState } from 'react'
 import { useAuth } from '@/auth/store'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useCloseOnOutsidePointer } from '../hooks/useCloseOnOutsidePointer'
 
 /** Save status + account menu for the toolbar. Guests get a "Log in to save" button instead. */
 export function UserMenu() {
@@ -10,6 +12,8 @@ export function UserMenu() {
   const save = useAuth((s) => s.save)
   const logout = useAuth((s) => s.logout)
   const showSignIn = useAuth((s) => s.showSignIn)
+  const [open, setOpen] = useState(false)
+  useCloseOnOutsidePointer(open, () => setOpen(false))
 
   if (status === 'guest') {
     return (
@@ -45,7 +49,7 @@ export function UserMenu() {
         {saveInfo.icon}
         <span className="hidden md:inline">{saveInfo.text}</span>
       </span>
-      <Popover>
+      <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
             type="button"

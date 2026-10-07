@@ -134,6 +134,12 @@ body {
   stroke: var(--color-link) !important;
 }
 
+/* The flip-direction button of a relation lives on React Flow's edge-label layer. Lit lines (hovered table) are
+   raised with a z-index, so the label layer has to sit above them or the button disappears behind its own line. */
+.react-flow__edgelabel-renderer {
+  z-index: 20;
+}
+
 /* Cardinality glyphs (bar / crow's foot / ring / "1" "n") follow the edge colour, green on hover. */
 .relation-end {
   fill: none;

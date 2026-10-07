@@ -96,6 +96,98 @@ describe('start-up', () => {
   })
 })
 
+describe('ERDs already loaded this session', () => {
+  const settle = () => new Promise((r) => setTimeout(r, 0))
+
+  it('open instantly the second time: no loading indicator, and the edits made meanwhile are there', async () => {
+    seed('a', 'A', 'table_a')
+    seed('b', 'B', 'table_b')
+    await signIn() // b open (and cached)
+    await useAuth.getState().openDiagram('a') // first visit: a real load
+    expect(server.calls.filter((c) => c === 'GET /diagrams/a')).toHaveLength(1)
+    rename('a_edited')
+    await useAuth.getState().saveNow()
+
+    const back = useAuth.getState().openDiagram('b') // b was loaded before
+    expect(useAuth.getState().loading).toBeNull() // never set: nothing to show
+    expect(useAuth.getState().switching).toBe(false)
+    expect(useAuth.getState().currentId).toBe('b') // switched synchronously
+    expect(names()).toEqual(['table_b'])
+    await back
+
+    const again = useAuth.getState().openDiagram('a')
+    expect(useAuth.getState().loading).toBeNull()
+    expect(names()).toEqual(['a_edited']) // the saved edit, straight from memory
+    await again
+    await settle()
+    expect(server.calls.filter((c) => c === 'GET /diagrams/a')).toHaveLength(2) // only the quiet freshness check
+  })
+
+  it('with unsaved edits it saves first, spinning only the row (a quiet load), then switches', async () => {
+    seed('a', 'A', 'table_a')
+    seed('b', 'B', 'table_b')
+    await signIn()
+    await useAuth.getState().openDiagram('a')
+    await useAuth.getState().openDiagram('b') // both cached now
+    rename('typed_but_not_saved')
+
+    const opening = useAuth.getState().openDiagram('a')
+    expect(useAuth.getState().loading).toEqual({ kind: 'open', id: 'a', quiet: true })
+    await opening
+    expect(server.rows.get('b')!.data.nodes[0].data.name).toBe('typed_but_not_saved')
+    expect(names()).toEqual(['table_a'])
+    expect(useAuth.getState().loading).toBeNull()
+  })
+
+  it('picks up a newer version saved elsewhere, but never overwrites what is being edited', async () => {
+    seed('a', 'A', 'table_a')
+    seed('b', 'B', 'table_b')
+    await signIn() // b open
+    await useAuth.getState().openDiagram('a')
+    await useAuth.getState().openDiagram('b')
+
+    // "another device" saves a
+    server.rows.get('a')!.data = ws('from_other_device')
+    server.rows.get('a')!.updatedAt = stamp()
+    void useAuth.getState().openDiagram('a') // shows the cached copy at once (the check below is still in flight)...
+    expect(names()).toEqual(['table_a'])
+    await settle()
+    expect(names()).toEqual(['from_other_device']) // ...then quietly updates
+
+    // the same again, but the person has already started typing
+    await useAuth.getState().openDiagram('b')
+    server.rows.get('b')!.data = ws('remote_b')
+    server.rows.get('b')!.updatedAt = stamp()
+    await useAuth.getState().openDiagram('a')
+    await useAuth.getState().openDiagram('b')
+    rename('my_typing') // edited before the freshness check answers
+    await settle()
+    expect(names()).toEqual(['my_typing'])
+  })
+
+  it('forgets a deleted ERD, remembers a created one, and is emptied on logout', async () => {
+    seed('a', 'A', 'table_a')
+    seed('b', 'B', 'table_b')
+    await signIn()
+    await useAuth.getState().openDiagram('a')
+    await useAuth.getState().deleteDiagram('a')
+    server.calls = []
+
+    const id = (await useAuth.getState().createDiagram())!
+    await useAuth.getState().openDiagram('b') // cached from sign-in
+    await useAuth.getState().openDiagram(id) // created this session: instant too
+    expect(server.calls.filter((c) => c === `GET /diagrams/${id}`)).toHaveLength(1) // just the quiet check, no load
+    expect(useAuth.getState().loading).toBeNull()
+
+    await useAuth.getState().logout()
+    await signIn() // a fresh sign-in must load from the server again
+    server.calls = []
+    await useAuth.getState().openDiagram('b')
+    expect(server.calls).toContain('GET /diagrams/b')
+    await settle()
+  })
+})
+
 describe('loading indicators', () => {
   it('say what the server is doing while it does it, and clear afterwards', async () => {
     seed('a', 'A', 'table_a')

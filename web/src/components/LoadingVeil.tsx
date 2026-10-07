@@ -13,7 +13,8 @@ export function LoadingVeil() {
   const currentId = useAuth((s) => s.currentId)
 
   // Deleting some other ERD doesn't touch the canvas, so only its sidebar row shows progress.
-  const coversCanvas = loading && (loading.kind !== 'delete' || loading.id === currentId)
+  // A quiet open (an ERD already loaded this session) only spins its sidebar row.
+  const coversCanvas = loading && !loading.quiet && (loading.kind !== 'delete' || loading.id === currentId)
   if (!authed || !(coversCanvas || (!ready && !loading))) return null
 
   const text =

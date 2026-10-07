@@ -14,7 +14,12 @@ export type DiagramMeta = { id: string; title: string; updatedAt: string }
 export const MAX_DIAGRAMS = 50
 const DEFAULT_TITLE = 'Untitled diagram'
 /** What the server round trip is for, so the UI can say so (a spinner on the row / button, a note over the canvas). */
-export type Loading = { kind: 'open' | 'create' | 'delete'; id?: string }
+export type Loading = {
+  kind: 'open' | 'create' | 'delete'
+  id?: string
+  /** Only the row shows progress, not the canvas (opening an ERD already loaded this session, after a save). */
+  quiet?: boolean
+}
 const BLANK: Workspace = { provider: 'postgresql', nodes: [], manyToMany: [] }
 
 type AuthState = {
@@ -50,6 +55,14 @@ type AuthState = {
 
 /** JSON of the canvas as last sent to / received from the server, to skip saves when nothing changed. */
 let lastSaved = ''
+
+/**
+ * ERDs already loaded in this page session, so going back to one is instant: no request, no loading indicator.
+ * In memory only (gone on reload), and cleared on logout. `updatedAt` is the server's timestamp for that content,
+ * used to notice when another device saved a newer version.
+ */
+type CachedDiagram = { data: Workspace; updatedAt: string }
+const sessionCache = new Map<string, CachedDiagram>()
 const snapshot = () => JSON.stringify(toWorkspace(useStore.getState()))
 
 /** init() runs once per page load, even if the component that calls it mounts twice (React StrictMode in dev). */
@@ -74,10 +87,37 @@ export const useAuth = create<AuthState>()((set, get) => {
 
   /** Puts one ERD's saved content on the canvas and marks it as the open one. */
   async function loadInto(id: string) {
-    const { diagram } = await api<{ diagram: { data: Workspace } }>(`/diagrams/${id}`)
+    const { diagram } = await api<{ diagram: { data: Workspace; updatedAt: string } }>(`/diagrams/${id}`)
+    sessionCache.set(id, { data: diagram.data, updatedAt: diagram.updatedAt })
     useStore.getState().loadWorkspace(diagram.data)
     lastSaved = snapshot()
     set({ currentId: id, ready: true, save: 'idle' })
+  }
+
+  /** Puts an already-loaded ERD on the canvas straight away, then quietly checks the server for a newer version. */
+  function showCached(id: string, entry: CachedDiagram) {
+    useStore.getState().loadWorkspace(entry.data)
+    lastSaved = snapshot()
+    set({ currentId: id, ready: true, save: 'idle' })
+    void revalidate(id)
+  }
+
+  /**
+   * Another device may have saved this ERD since we cached it. If the server has something newer and nothing has
+   * been edited here in the meantime, take it; if the person already started editing, leave their work alone.
+   */
+  async function revalidate(id: string) {
+    try {
+      const { diagram } = await api<{ diagram: { data: Workspace; updatedAt: string } }>(`/diagrams/${id}`)
+      const cached = sessionCache.get(id)
+      if (!cached || diagram.updatedAt <= cached.updatedAt) return
+      sessionCache.set(id, { data: diagram.data, updatedAt: diagram.updatedAt })
+      if (get().currentId !== id || snapshot() !== lastSaved) return
+      useStore.getState().loadWorkspace(diagram.data)
+      lastSaved = snapshot()
+    } catch {
+      /* offline or expired: the cached copy stays, and the next save reports any real problem */
+    }
   }
 
   /** Flushes unsaved edits of the open ERD. False when that failed (so a switch must not throw them away). */
@@ -96,6 +136,7 @@ export const useAuth = create<AuthState>()((set, get) => {
 
   /** Signed in: open the most recently edited ERD, or turn what is on the canvas into the first one. */
   async function enter(user: AuthUser) {
+    sessionCache.clear() // never carry one account's diagrams over to the next
     set({ status: 'authed', user, ready: false, save: 'idle', diagrams: [], currentId: null, switching: false, loading: null })
     try {
       const { diagrams } = await api<{ diagrams: DiagramMeta[] }>('/diagrams')
@@ -104,6 +145,7 @@ export const useAuth = create<AuthState>()((set, get) => {
           body: { title: 'My first ERD', data: JSON.parse(snapshot()) },
         })
         lastSaved = snapshot()
+        sessionCache.set(diagram.id, { data: JSON.parse(lastSaved), updatedAt: diagram.updatedAt })
         set({ diagrams: [diagram], currentId: diagram.id, ready: true })
         return
       }
@@ -158,6 +200,7 @@ export const useAuth = create<AuthState>()((set, get) => {
       useStore.getState().loadSample()
       useStore.getState().setProvider('postgresql')
       lastSaved = ''
+      sessionCache.clear()
       set({
         status: 'anonymous',
         user: null,
@@ -187,6 +230,7 @@ export const useAuth = create<AuthState>()((set, get) => {
           keepalive: options?.keepalive,
         })
         lastSaved = body
+        sessionCache.set(currentId, { data: JSON.parse(body), updatedAt })
         set((s) => ({
           save: 'saved',
           savedAt: Date.now(),
@@ -200,9 +244,23 @@ export const useAuth = create<AuthState>()((set, get) => {
 
     openDiagram: async (id) => {
       if (get().switching || id === get().currentId) return
-      set({ switching: true, loading: { kind: 'open', id } })
+      const cached = sessionCache.get(id)
+      const unsaved = get().ready && snapshot() !== lastSaved
+
+      // Seen already this session and nothing waiting to be saved: switch at once, with no spinner at all.
+      if (cached && !unsaved) {
+        showCached(id, cached)
+        return
+      }
+
+      // Otherwise save first. A cached ERD only needs that wait (so the row spins, not the canvas); a new one loads.
+      set({ switching: true, loading: cached ? { kind: 'open', id, quiet: true } : { kind: 'open', id } })
       try {
         if (!(await flush())) return
+        if (cached) {
+          showCached(id, cached)
+          return
+        }
         set({ ready: false }) // the canvas is about to show another ERD: nothing may be saved onto the wrong one
         try {
           await loadInto(id)
@@ -225,6 +283,7 @@ export const useAuth = create<AuthState>()((set, get) => {
         })
         useStore.getState().loadWorkspace(BLANK)
         lastSaved = snapshot()
+        sessionCache.set(diagram.id, { data: BLANK, updatedAt: diagram.updatedAt })
         set((s) => ({ diagrams: [...s.diagrams, diagram], currentId: diagram.id, ready: true, save: 'idle' }))
         return diagram.id
       } catch (e) {
@@ -263,6 +322,7 @@ export const useAuth = create<AuthState>()((set, get) => {
           fail(e, 'Could not delete the diagram')
           return
         }
+        sessionCache.delete(id)
         const remaining = get().diagrams.filter((d) => d.id !== id)
         set({ diagrams: remaining })
         if (!wasOpen) return
@@ -277,6 +337,7 @@ export const useAuth = create<AuthState>()((set, get) => {
             })
             useStore.getState().loadWorkspace(BLANK)
             lastSaved = snapshot()
+            sessionCache.set(diagram.id, { data: BLANK, updatedAt: diagram.updatedAt })
             set({ diagrams: [diagram], currentId: diagram.id, ready: true, save: 'idle' })
           }
         } catch (e) {

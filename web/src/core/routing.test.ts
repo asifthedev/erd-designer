@@ -47,7 +47,7 @@ describe('sidesForRects', () => {
 })
 
 describe('routePoints', () => {
-  it('never passes through either table, whatever the layout, row or hand-dragged lane', () => {
+  it('automatic routes never pass through either table, whatever the layout or row', () => {
     const rand = rng(42)
     const between = (lo: number, hi: number) => lo + rand() * (hi - lo)
     let checked = 0
@@ -69,10 +69,9 @@ describe('routePoints', () => {
       const tx = sb === 'r' ? b.right : b.left
       const sy = between(a.top + 20, a.bottom - 20)
       const ty = between(b.top + 20, b.bottom - 20)
-      const bend = rand() < 0.5 ? undefined : { x: between(-400, 400), y: between(-400, 400) }
 
-      const pts = routePoints(sx, sy, sDir, tx, ty, tDir, bend)
-      const label = JSON.stringify({ a, b, sa, sb, bend })
+      const pts = routePoints(sx, sy, sDir, tx, ty, tDir)
+      const label = JSON.stringify({ a, b, sa, sb })
       for (let k = 0; k + 1 < pts.length; k++) {
         expect(cuts(a, pts[k], pts[k + 1]), `cuts the source table: ${label}`).toBe(false)
         expect(cuts(b, pts[k], pts[k + 1]), `cuts the target table: ${label}`).toBe(false)
@@ -100,8 +99,14 @@ describe('routePoints', () => {
     expect(across).toBeLessThanOrEqual(1000 - STUB)
   })
 
-  it('keeps a hand-dragged lane outside the stubs', () => {
-    expect(routeX(680, 1, 1000, 500, -1, { x: -999, y: 0 })).toBe(680 + STUB)
-    expect(routeX(680, 1, 1000, 500, -1, { x: 999, y: 0 })).toBe(1000 - STUB)
+  it('lets the user drag the lane anywhere: the route follows by exactly that much, with no stops or dead zones', () => {
+    const auto = routeX(680, 1, 1000, 500, -1)
+    for (const dx of [-999, -300, -48, -1, 1, 47, 300, 999]) {
+      expect(routeX(680, 1, 1000, 500, -1, { x: dx, y: 0 })).toBe(auto + dx)
+    }
+    // brackets too, and the path stays orthogonal (every step is horizontal or vertical)
+    const pts = routePoints(680, 100, 1, 380, 500, 1, { x: -200, y: 0 })
+    expect(pts.map((p) => p[0])).toEqual([680, 680 + STUB + TURN - 200, 680 + STUB + TURN - 200, 380])
+    for (let k = 0; k + 1 < pts.length; k++) expect(pts[k][0] === pts[k + 1][0] || pts[k][1] === pts[k + 1][1]).toBe(true)
   })
 })

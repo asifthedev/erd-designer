@@ -1,5 +1,7 @@
-import { Check, RotateCcw, Settings2 } from 'lucide-react'
+import { Check, RotateCcw, Settings } from 'lucide-react'
+import { useState } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useCloseOnOutsidePointer } from '../hooks/useCloseOnOutsidePointer'
 import {
   DEFAULT_SETTINGS,
   FONT_WEIGHTS,
@@ -53,13 +55,15 @@ const segment = (active: boolean) =>
 /** Toolbar button + popover with the look settings: theme, and the font / weight used inside the tables. */
 export function SettingsMenu() {
   const { theme, tableFont, tableWeight, setTableFont, setTableWeight, reset } = useSettings()
+  const [open, setOpen] = useState(false)
+  useCloseOnOutsidePointer(open, () => setOpen(false)) // a click on the canvas (or anywhere else) closes the menu
   const isDefault =
     theme === DEFAULT_SETTINGS.theme &&
     tableFont === DEFAULT_SETTINGS.tableFont &&
     tableWeight === DEFAULT_SETTINGS.tableWeight
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -67,7 +71,7 @@ export function SettingsMenu() {
           aria-label="Settings"
           className="grid size-8 cursor-pointer place-items-center rounded-md border border-line text-muted hover:border-key hover:text-key"
         >
-          <Settings2 size={16} />
+          <Settings size={16} />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="font-ui w-[22rem] p-3">
