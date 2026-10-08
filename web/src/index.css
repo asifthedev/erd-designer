@@ -432,3 +432,32 @@ body {
   --color-hover-strong: rgb(255 240 220 / 12%);
   --color-mask: rgb(28 25 23 / 72%);
 }
+
+/*
+ * Landing page ("/"). Two modes, white and midnight, set by data-mode on the .landing wrapper. These --l-* variables
+ * are separate from the editor's theme tokens on purpose: the marketing page keeps its look whatever theme the
+ * editor uses.
+ */
+.landing[data-mode='light'] {
+  --l-bg: #ffffff;
+  --l-panel: #f5f5f5;
+  --l-ink: #0a0a0a;
+  --l-muted: #6b6b70;
+  --l-line: #e6e6e8;
+  --l-hover: rgb(0 0 0 / 5%);
+  --l-glow: rgb(122 162 247 / 14%);
+  --l-shadow: rgb(15 23 42 / 35%);
+}
+.landing[data-mode='dark'] {
+  --l-bg: #0d0f14;
+  --l-panel: #14161c;
+  --l-ink: #eceef3;
+  --l-muted: #8d95a6;
+  --l-line: #232733;
+  --l-hover: rgb(255 255 255 / 7%);
+  --l-glow: rgb(122 162 247 / 16%);
+  --l-shadow: rgb(0 0 0 / 80%);
+}
+.landing {
+  scroll-behavior: smooth;
+}

@@ -25,6 +25,8 @@ import { LoadingVeil } from '@/components/LoadingVeil'
 import { SettingsMenu } from '@/components/SettingsMenu'
 import { UserMenu } from '@/components/UserMenu'
 import { Toaster } from '@/components/ui/sonner'
+import { Landing } from '@/landing/Landing'
+import { APP_PATH, usePath } from '@/lib/route'
 import { ZoomBar } from './components/ZoomBar'
 import { ContextMenu, DELETE_HINT, type MenuTarget } from './components/ContextMenu'
 import { IssuesProvider } from './components/issues'
@@ -437,9 +439,11 @@ function Editor() {
   )
 }
 
-/** Decides what to show: a splash while the session is checked, the sign-in screen, or the editor. */
+/** Decides what to show: the landing page at "/"; under /app a splash while the session is checked, the sign-in screen, or the editor. */
 export default function App() {
   const status = useAuth((s) => s.status)
+  const path = usePath()
+  const inApp = path === APP_PATH || path.startsWith(`${APP_PATH}/`)
   useEffect(() => {
     void useAuth.getState().init()
   }, [])
@@ -455,13 +459,14 @@ export default function App() {
         closeButton
         toastOptions={{ classNames: { toast: 'font-ui' } }}
       />
-      {status === 'loading' && (
+      {!inApp && <Landing />}
+      {inApp && status === 'loading' && (
         <div className="grid h-full place-items-center bg-canvas font-mono text-muted">
           <span className="animate-pulse">erd.designer</span>
         </div>
       )}
-      {status === 'anonymous' && <AuthScreen />}
-      {(status === 'authed' || status === 'guest') && <Editor />}
+      {inApp && status === 'anonymous' && <AuthScreen />}
+      {inApp && (status === 'authed' || status === 'guest') && <Editor />}
     </>
   )
 }
