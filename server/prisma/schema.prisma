@@ -9,13 +9,17 @@ generator client {
 }
 
 model User {
-  id           String   @id @default(uuid())
+  id                   String    @id @default(uuid())
   /// Stored lower-cased and trimmed.
-  email        String   @unique
-  name         String?
+  email                String    @unique
+  name                 String?
   /// scrypt hash, never the password itself.
-  passwordHash String   @map("password_hash")
-  createdAt    DateTime @default(now()) @map("created_at")
+  passwordHash         String    @map("password_hash")
+  /// The person's look-and-feel settings (theme, table font, line style), kept here so they follow the account
+  /// to every device. Validated on the way in (see preferencesSchema); null until they are first saved.
+  preferences          Json?
+  preferencesUpdatedAt DateTime? @map("preferences_updated_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
 
   sessions Session[]
   diagrams Diagram[]
@@ -24,7 +28,7 @@ model User {
 }
 
 model Session {
-  id String @id @default(uuid())
+  id        String   @id @default(uuid())
   /// SHA-256 of the random token held in the browser cookie, so a leaked table can't be replayed.
   tokenHash String   @unique @map("token_hash")
   userId    String   @map("user_id")

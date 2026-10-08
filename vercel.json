@@ -20,6 +20,10 @@
     {
       "source": "/app/:path*",
       "destination": "/index.html"
+    },
+    {
+      "source": "/settings",
+      "destination": "/index.html"
     }
   ],
   "headers": [

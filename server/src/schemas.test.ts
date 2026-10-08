@@ -1,23 +1,30 @@
 import { describe, expect, it } from 'vitest'
-import { diagramSchema, loginSchema, signupSchema } from './schemas'
+import { diagramSchema, loginSchema, preferencesSchema, signupSchema, updatePreferencesSchema } from './schemas'
 
 describe('signupSchema', () => {
   it('normalises the email and trims the name', () => {
-    const r = signupSchema.parse({ email: '  Ada@Example.COM ', password: '12345678', code: ' 123456 ', name: '  Ada ' })
+    const r = signupSchema.parse({
+      email: '  Ada@Example.COM ',
+      password: '12345678',
+      code: ' 123456 ',
+      name: '  Ada ',
+    })
     expect(r).toEqual({ email: 'ada@example.com', password: '12345678', code: '123456', name: 'Ada' })
   })
 
   it('rejects short passwords and bad emails with readable messages', () => {
-    expect(signupSchema.safeParse({ email: 'a@b.co', password: '1234567', code: '123456' }).error?.issues[0].message).toMatch(
-      /8/,
-    )
-    expect(signupSchema.safeParse({ email: 'nope', password: '12345678', code: '123456' }).error?.issues[0].message).toMatch(
-      /email/i,
-    )
+    expect(
+      signupSchema.safeParse({ email: 'a@b.co', password: '1234567', code: '123456' }).error?.issues[0].message,
+    ).toMatch(/8/)
+    expect(
+      signupSchema.safeParse({ email: 'nope', password: '12345678', code: '123456' }).error?.issues[0].message,
+    ).toMatch(/email/i)
   })
 
   it('turns an empty name into undefined', () => {
-    expect(signupSchema.parse({ email: 'a@b.co', password: '12345678', code: '123456', name: '  ' }).name).toBeUndefined()
+    expect(
+      signupSchema.parse({ email: 'a@b.co', password: '12345678', code: '123456', name: '  ' }).name,
+    ).toBeUndefined()
   })
 
   it('needs the 6-digit code', () => {
@@ -48,9 +55,7 @@ describe('diagramSchema', () => {
   const node = { id: 't1', position: { x: 0, y: 40 }, data: { id: 't1', name: 'users', columns: [column] } }
 
   it('accepts a saved workspace', () => {
-    expect(diagramSchema.safeParse({ provider: 'postgresql', nodes: [node], manyToMany: [] }).success).toBe(
-      true,
-    )
+    expect(diagramSchema.safeParse({ provider: 'postgresql', nodes: [node], manyToMany: [] }).success).toBe(true)
   })
 
   it('keeps the table icon and colour instead of stripping them', () => {
@@ -58,7 +63,13 @@ describe('diagramSchema', () => {
     const r = diagramSchema.parse({ provider: 'postgresql', nodes: [styled], manyToMany: [] })
     expect(r.nodes[0].data.icon).toBe('Users')
     expect(r.nodes[0].data.color).toBe('teal')
-    expect(diagramSchema.safeParse({ provider: 'postgresql', nodes: [{ ...node, data: { ...node.data, color: 'x'.repeat(21) } }], manyToMany: [] }).success).toBe(false)
+    expect(
+      diagramSchema.safeParse({
+        provider: 'postgresql',
+        nodes: [{ ...node, data: { ...node.data, color: 'x'.repeat(21) } }],
+        manyToMany: [],
+      }).success,
+    ).toBe(false)
   })
 
   it('keeps a hand-dragged line shape (bend) instead of stripping it', () => {
@@ -90,8 +101,7 @@ describe('diagramSchema', () => {
   it('rejects unknown databases, missing fields and non-numeric positions', () => {
     expect(diagramSchema.safeParse({ provider: 'oracle', nodes: [], manyToMany: [] }).success).toBe(false)
     expect(
-      diagramSchema.safeParse({ provider: 'mysql', nodes: [{ ...node, data: { id: 't1' } }], manyToMany: [] })
-        .success,
+      diagramSchema.safeParse({ provider: 'mysql', nodes: [{ ...node, data: { id: 't1' } }], manyToMany: [] }).success,
     ).toBe(false)
     expect(
       diagramSchema.safeParse({
@@ -100,5 +110,32 @@ describe('diagramSchema', () => {
         manyToMany: [],
       }).success,
     ).toBe(false)
+  })
+})
+
+describe('updatePreferencesSchema', () => {
+  it('takes any subset of the known settings', () => {
+    expect(updatePreferencesSchema.parse({ theme: 'violet' })).toEqual({ theme: 'violet' })
+    expect(updatePreferencesSchema.parse({ tableWeight: 300, edgeStyle: 'curved' })).toEqual({
+      tableWeight: 300,
+      edgeStyle: 'curved',
+    })
+  })
+
+  it('rejects an empty update, unknown settings and unknown values', () => {
+    for (const bad of [
+      {},
+      { x: 1 },
+      { theme: 'violet', x: 1 },
+      { theme: 'nope' },
+      { tableWeight: 600 },
+      { edgeStyle: 1 },
+    ]) {
+      expect(updatePreferencesSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false)
+    }
+  })
+
+  it('lists exactly the four settings of the web app', () => {
+    expect(Object.keys(preferencesSchema.shape).sort()).toEqual(['edgeStyle', 'tableFont', 'tableWeight', 'theme'])
   })
 })

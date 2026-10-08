@@ -9,7 +9,7 @@ import {
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Bend } from '../core/model'
-import { curveGeometry, routeParts, routePoints, type Dir, type Pt } from '../core/routing'
+import { curveGeometry, roundedPolyline, routeParts, routePoints, type Dir, type Pt } from '../core/routing'
 import { useSettings } from '../settings'
 import { useStore } from '../store'
 
@@ -61,26 +61,6 @@ const polyline = (pts: Pt[]) => pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x},${y
 type Part = 'source' | 'lane' | 'target' | 'curve'
 /** Double-headed arrows: ↔ for the vertical lane, ↕ for the two horizontal runs; a curve goes both ways (✥). */
 const CURSOR: Record<Part, string> = { source: 'ns-resize', lane: 'ew-resize', target: 'ns-resize', curve: 'move' }
-
-/** Polyline through `pts` with each corner rounded by up to `radius` (less on short segments). */
-function roundedPolyline(pts: [number, number][], radius: number): string {
-  // Drop repeated points so zero-length segments can't produce NaN directions.
-  const p = pts.filter((pt, i) => i === 0 || pt[0] !== pts[i - 1][0] || pt[1] !== pts[i - 1][1])
-  let d = `M${p[0][0]},${p[0][1]}`
-  for (let i = 1; i < p.length - 1; i++) {
-    const [px, py] = p[i - 1]
-    const [cx, cy] = p[i]
-    const [nx, ny] = p[i + 1]
-    const inLen = Math.hypot(cx - px, cy - py)
-    const outLen = Math.hypot(nx - cx, ny - cy)
-    const r = Math.min(radius, inLen / 2, outLen / 2)
-    d +=
-      `L${cx - ((cx - px) / inLen) * r},${cy - ((cy - py) / inLen) * r}` +
-      `Q${cx},${cy} ${cx + ((nx - cx) / outLen) * r},${cy + ((ny - cy) / outLen) * r}`
-  }
-  const last = p[p.length - 1]
-  return `${d}L${last[0]},${last[1]}`
-}
 
 /**
  * Path between two table borders: out of the source straight for STUB px, a horizontal run to the vertical

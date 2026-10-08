@@ -6,15 +6,24 @@ left sidebar) and open them on any device.
 
 ## Settings
 
-The gear icon in the toolbar opens **Settings** (saved in this browser):
+The gear icon (toolbar, and at the foot of the diagram list) opens the **Settings** page, `/settings`, with only the
+look-and-feel choices and a live preview:
 
-- **Theme**: Midnight (default), Dracula, Vercel, Warm Dark, Eraser (coloured tables, with a colour menu per table) or Violet (purple primary, `#6c5ce7`). The palettes are CSS tokens in
-  `web/src/index.css`; a test checks that every theme defines the full set and keeps text readable (WCAG contrast).
+- **Theme**: Midnight (default), Dracula, Vercel, Warm Dark, Eraser (coloured tables, with a colour menu per table) or
+  Violet (purple primary, `#6c5ce7`). The palettes are CSS tokens in `web/src/index.css`; a test checks that every
+  theme defines the full set and keeps text readable (WCAG contrast).
 - **Line style**: **Orthogonal** (default: right-angle lines; drag the vertical part left / right and the horizontal
   parts up / down) or **Curved** (smooth, fluid curves; drag the curve by its middle in any direction). Both start and
   end exactly on the columns, and every line keeps the shape it was dragged to.
 - **Table font**: Google Sans Code or JetBrains Mono, in **Light / Regular / Medium**. It only applies to the tables;
   the rest of the interface keeps its own font.
+
+**Where they are kept.** Logged in, the choices are saved on your account (`GET` / `PUT /api/settings`, stored in
+`erd_users.preferences`) and follow you to every device: on login the account's settings are applied, and each change
+is sent a moment later (a burst of clicks becomes one request). The server merges what it receives into what it has, so
+two devices changing different settings don't overwrite each other. Logged out (or as a guest) they stay in this
+browser, and an account that has no saved settings yet adopts the ones already used in this browser. The page shows
+which of the two applies, and offers "Try again" if syncing failed. The sync is `web/src/settingsSync.ts`.
 
 ## Repository layout
 

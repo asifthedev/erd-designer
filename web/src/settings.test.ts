@@ -184,3 +184,21 @@ describe('Violet theme', () => {
     expect(t['--color-primary-foreground']).toBe('#ffffff')
   })
 })
+
+describe('settings kept on the account', () => {
+  // The server validates what it stores with its own lists (server/src/schemas.ts, preferencesSchema). The two
+  // packages share no code, so this fails if a theme, font, weight or line style is added on one side only.
+  const server = readFileSync(path.resolve(import.meta.dirname, '../../server/src/schemas.ts'), 'utf8')
+  const block = /preferencesSchema = z\.object\(\{([\s\S]*?)\n\}\)/.exec(server)?.[1] ?? ''
+  const listOf = (key: string) =>
+    [...(new RegExp(`${key}: ([^\\n]*)`).exec(block)?.[1] ?? '').matchAll(/'([^']+)'|(\d+)/g)].map(
+      (m) => m[1] ?? Number(m[2]),
+    )
+
+  it('the server accepts exactly the themes, fonts, weights and line styles the app offers', () => {
+    expect(listOf('theme')).toEqual(THEMES.map((t) => t.id))
+    expect(listOf('tableFont')).toEqual(TABLE_FONTS.map((f) => f.id))
+    expect(listOf('tableWeight')).toEqual(FONT_WEIGHTS.map((w) => w.value))
+    expect(listOf('edgeStyle')).toEqual(EDGE_STYLES.map((e) => e.id))
+  })
+})

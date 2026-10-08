@@ -134,6 +134,26 @@ export function routePoints(
   return simplify([...source, ...lane.slice(1), ...target.slice(1)])
 }
 
+/** Orthogonal line style as SVG path text: a polyline through `pts` with each corner rounded by up to `radius` (less on short segments). */
+export function roundedPolyline(pts: Pt[], radius: number): string {
+  // Drop repeated points so zero-length segments can't produce NaN directions.
+  const p = pts.filter((pt, i) => i === 0 || pt[0] !== pts[i - 1][0] || pt[1] !== pts[i - 1][1])
+  let d = `M${p[0][0]},${p[0][1]}`
+  for (let i = 1; i < p.length - 1; i++) {
+    const [px, py] = p[i - 1]
+    const [cx, cy] = p[i]
+    const [nx, ny] = p[i + 1]
+    const inLen = Math.hypot(cx - px, cy - py)
+    const outLen = Math.hypot(nx - cx, ny - cy)
+    const r = Math.min(radius, inLen / 2, outLen / 2)
+    d +=
+      `L${cx - ((cx - px) / inLen) * r},${cy - ((cy - py) / inLen) * r}` +
+      `Q${cx},${cy} ${cx + ((nx - cx) / outLen) * r},${cy + ((ny - cy) / outLen) * r}`
+  }
+  const last = p[p.length - 1]
+  return `${d}L${last[0]},${last[1]}`
+}
+
 /** `x,y` rounded to 2 decimals, so the path text stays short and stable. */
 const n2 = (v: number) => Math.round(v * 100) / 100
 const at = ([x, y]: Pt) => `${n2(x)},${n2(y)}`

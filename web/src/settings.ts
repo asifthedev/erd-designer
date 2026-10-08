@@ -53,6 +53,8 @@ type SettingsState = Settings & {
   setTableFont: (tableFont: TableFontId) => void
   setTableWeight: (tableWeight: FontWeight) => void
   setEdgeStyle: (edgeStyle: EdgeStyleId) => void
+  /** Replaces all four at once (used when the account's saved settings arrive). */
+  replace: (settings: Settings) => void
   reset: () => void
 }
 
@@ -75,6 +77,7 @@ export const useSettings = create<SettingsState>()(
       setTableFont: (tableFont) => set({ tableFont }),
       setTableWeight: (tableWeight) => set({ tableWeight }),
       setEdgeStyle: (edgeStyle) => set({ edgeStyle }),
+      replace: (settings) => set(settings),
       reset: () => set(DEFAULT_SETTINGS),
     }),
     {
@@ -85,6 +88,17 @@ export const useSettings = create<SettingsState>()(
     },
   ),
 )
+
+/** The four settings of a state (without the actions), e.g. to send them to the server. */
+export const pickSettings = (s: Settings): Settings => ({
+  theme: s.theme,
+  tableFont: s.tableFont,
+  tableWeight: s.tableWeight,
+  edgeStyle: s.edgeStyle,
+})
+
+export const sameSettings = (a: Settings, b: Settings) =>
+  a.theme === b.theme && a.tableFont === b.tableFont && a.tableWeight === b.tableWeight && a.edgeStyle === b.edgeStyle
 
 /** Puts the settings on <html>: the theme attribute (colours) and the table font variables. */
 export function applySettings(s: Settings) {

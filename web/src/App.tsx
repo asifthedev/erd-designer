@@ -22,11 +22,13 @@ import { AuthScreen } from '@/components/AuthScreen'
 import { ClearAllToasts } from '@/components/ClearAllToasts'
 import { DiagramSidebar } from '@/components/DiagramSidebar'
 import { LoadingVeil } from '@/components/LoadingVeil'
-import { SettingsMenu } from '@/components/SettingsMenu'
+import { SettingsLink } from '@/components/SettingsLink'
 import { UserMenu } from '@/components/UserMenu'
 import { Toaster } from '@/components/ui/sonner'
 import { Landing } from '@/landing/Landing'
-import { APP_PATH, usePath } from '@/lib/route'
+import { APP_PATH, SETTINGS_PATH, usePath } from '@/lib/route'
+import { SettingsPage } from '@/pages/SettingsPage'
+import { startSettingsSync, stopSettingsSync } from './settingsSync'
 import { ZoomBar } from './components/ZoomBar'
 import { ContextMenu, DELETE_HINT, type MenuTarget } from './components/ContextMenu'
 import { IssuesProvider } from './components/issues'
@@ -350,7 +352,7 @@ function Toolbar() {
       >
         {'{ }'} Code
       </button>
-      <SettingsMenu />
+      <SettingsLink />
       <UserMenu />
     </header>
   )
@@ -451,14 +453,22 @@ function Editor() {
   )
 }
 
-/** Decides what to show: the landing page at "/"; under /app a splash while the session is checked, the sign-in screen, or the editor. */
+/** Decides what to show: the landing page at "/", the Settings page at /settings; under /app a splash while the session is checked, the sign-in screen, or the editor. */
 export default function App() {
   const status = useAuth((s) => s.status)
   const path = usePath()
   const inApp = path === APP_PATH || path.startsWith(`${APP_PATH}/`)
+  const inSettings = path === SETTINGS_PATH
   useEffect(() => {
     void useAuth.getState().init()
   }, [])
+
+  // While someone is logged in, their Settings-page choices are kept on the account (see settingsSync.ts).
+  useEffect(() => {
+    if (status !== 'authed') return
+    void startSettingsSync()
+    return stopSettingsSync
+  }, [status])
 
   return (
     <>
@@ -471,7 +481,8 @@ export default function App() {
         closeButton
         toastOptions={{ classNames: { toast: 'font-ui' } }}
       />
-      {!inApp && <Landing />}
+      {!inApp && !inSettings && <Landing />}
+      {inSettings && <SettingsPage />}
       {inApp && status === 'loading' && (
         <div className="grid h-full place-items-center bg-canvas font-mono text-muted">
           <span className="animate-pulse">erd.designer</span>

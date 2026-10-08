@@ -6,6 +6,7 @@ import { config } from './config'
 import { attachUser, originCheck } from './middleware/auth'
 import { authRouter } from './routes/auth'
 import { diagramsRouter } from './routes/diagrams'
+import { settingsRouter } from './routes/settings'
 import { globalLimiter } from './security/limiters'
 
 /** Builds the Express app. Kept separate from `listen()` so tests and the serverless entry can reuse it. */
@@ -26,6 +27,7 @@ export function createApp() {
   app.use('/api', globalLimiter, originCheck, attachUser)
   app.use('/api/auth', authRouter)
   app.use('/api/diagrams', diagramsRouter)
+  app.use('/api/settings', settingsRouter)
 
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Not found' })

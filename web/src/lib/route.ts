@@ -1,10 +1,12 @@
 import { useSyncExternalStore } from 'react'
 
 /**
- * Minimal path routing, enough for two pages: "/" is the marketing page and "/app" is the editor. No router library;
- * Vercel serves index.html for /app (see vercel.json) and the Vite dev server does so on its own.
+ * Minimal path routing, enough for three pages: "/" is the marketing page, "/app" the editor and "/settings" the
+ * Settings page. No router library; Vercel serves index.html for /app and /settings (see vercel.json) and the Vite
+ * dev server does so on its own.
  */
 export const APP_PATH = '/app'
+export const SETTINGS_PATH = '/settings'
 
 const listeners = new Set<() => void>()
 const subscribe = (fn: () => void) => {

@@ -113,3 +113,21 @@ export const updateDiagramSchema = z
 
 /** What a brand-new diagram contains. */
 export const BLANK_DIAGRAM: DiagramPayload = { provider: 'postgresql', nodes: [], manyToMany: [] }
+
+/**
+ * The look-and-feel settings kept on the account (the web app's Settings page). The allowed values mirror the lists
+ * in web/src/settings.ts (a web test checks that they match). Any subset can be sent: the server merges it into
+ * what is stored, so two devices changing different settings don't overwrite each other.
+ */
+export const preferencesSchema = z.object({
+  theme: z.enum(['midnight', 'dracula', 'vercel', 'warm', 'eraser', 'violet']),
+  tableFont: z.enum(['google-sans-code', 'jetbrains-mono']),
+  tableWeight: z.union([z.literal(300), z.literal(400), z.literal(500)]),
+  edgeStyle: z.enum(['orthogonal', 'curved']),
+})
+
+/** PUT /settings: one or more of the settings above, nothing else. */
+export const updatePreferencesSchema = preferencesSchema
+  .partial()
+  .strict()
+  .refine((v) => Object.keys(v).length > 0, { message: 'Nothing to update' })

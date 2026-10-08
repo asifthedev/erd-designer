@@ -18,7 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useCloseOnOutsidePointer } from '../hooks/useCloseOnOutsidePointer'
 import { initials, tableCountLabel, timeAgo } from '../lib/time'
 import type { Provider } from '../core/model'
-import { SettingsMenu } from './SettingsMenu'
+import { SettingsLink } from './SettingsLink'
 import { useStore } from '../store'
 
 const PROVIDER_LABEL: Record<Provider, string> = { postgresql: 'PG', mysql: 'MySQL', sqlite: 'SQLite' }
@@ -431,7 +431,7 @@ export function DiagramSidebar() {
               <div className="truncate font-semibold">{accountName}</div>
               <div className="truncate text-[12.5px] text-muted">{user.email}</div>
             </div>
-            <SettingsMenu inSidebar />
+            <SettingsLink inSidebar />
           </div>
         )}
       </footer>

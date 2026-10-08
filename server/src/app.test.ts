@@ -511,6 +511,72 @@ describe.skipIf(!hasDb)('API (integration, real PostgreSQL)', () => {
     })
   })
 
+  describe('account settings (synced preferences)', () => {
+    type Auth = Awaited<ReturnType<typeof signUp>>
+    const get = (u: Auth) => request(app).get('/api/settings').set('Cookie', u.cookie)
+    const put = (u: Auth, body: object) => request(app).put('/api/settings').set('Cookie', u.cookie).send(body)
+
+    it('needs a login', async () => {
+      expect((await request(app).get('/api/settings')).status).toBe(401)
+      expect((await request(app).put('/api/settings').send({ theme: 'violet' })).status).toBe(401)
+    })
+
+    it('has nothing stored until the first save (null, not defaults), then returns what was saved', async () => {
+      const u = await signUp()
+      const first = await get(u)
+      expect(first.body).toEqual({ settings: null, updatedAt: null })
+
+      const saved = await put(u, { theme: 'violet', edgeStyle: 'curved' })
+      expect(saved.status).toBe(200)
+      expect(saved.body.settings).toEqual({ theme: 'violet', edgeStyle: 'curved' })
+      expect(typeof saved.body.updatedAt).toBe('string')
+      expect((await get(u)).body.settings).toEqual({ theme: 'violet', edgeStyle: 'curved' })
+    })
+
+    it('merges what is sent into what is stored, so devices changing different settings do not overwrite each other', async () => {
+      const u = await signUp()
+      await put(u, { theme: 'eraser', tableWeight: 500 })
+      await put(u, { edgeStyle: 'curved' })
+      const after = await put(u, { theme: 'warm' })
+      expect(after.body.settings).toEqual({ theme: 'warm', tableWeight: 500, edgeStyle: 'curved' })
+    })
+
+    it('only accepts known settings with known values', async () => {
+      const u = await signUp()
+      for (const bad of [
+        {},
+        { theme: 'neon' },
+        { tableWeight: 450 },
+        { tableWeight: '400' },
+        { edgeStyle: 'zigzag' },
+        { tableFont: 'comic-sans' },
+        { theme: 'violet', role: 'admin' }, // an unknown key is refused, not stored
+        { theme: { $ne: 1 } },
+      ]) {
+        expect((await put(u, bad)).status, JSON.stringify(bad)).toBe(400)
+      }
+      expect((await get(u)).body.settings).toBeNull() // nothing got through
+    })
+
+    it("keeps each person's settings to themselves", async () => {
+      const a = await signUp()
+      const b = await signUp()
+      await put(a, { theme: 'dracula' })
+      expect((await get(b)).body.settings).toBeNull()
+      await put(b, { theme: 'vercel' })
+      expect((await get(a)).body.settings).toEqual({ theme: 'dracula' })
+    })
+
+    it('hides a stored value this version no longer knows, without hiding the others', async () => {
+      const u = await signUp()
+      await prisma.user.update({
+        where: { id: u.user.id },
+        data: { preferences: { theme: 'retired-theme', edgeStyle: 'curved', somethingOld: 1 } },
+      })
+      expect((await get(u)).body.settings).toEqual({ edgeStyle: 'curved' })
+    })
+  })
+
   describe('saved diagrams (several per user)', () => {
     type Auth = Awaited<ReturnType<typeof signUp>>
     const create = (u: Auth, body: object = {}) => request(app).post('/api/diagrams').set('Cookie', u.cookie).send(body)
