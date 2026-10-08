@@ -88,7 +88,10 @@ type State = {
   /** Width in px of the right-hand side panel. */
   sidebarWidth: number
   /** Edge id (`tableId:columnId` of the foreign key) currently selected. */
+  /** The relation line that is picked (drawn highlighted). Picking one does NOT open its settings panel. */
   selectedEdgeId: string | null
+  /** The picked relation's settings panel is showing in the side panel (see openEdgePanel). */
+  edgePanelOpen: boolean
 
   setProvider: (p: Provider) => void
   onNodesChange: (changes: NodeChange<TableNodeType>[]) => void
@@ -126,7 +129,10 @@ type State = {
   /** Close the whole side panel: the code view and the relation settings. */
   closeSidebar: () => void
   setSidebarWidth: (w: number) => void
+  /** Picks a relation line (or clears the pick). If its settings panel is already open, it follows the pick; otherwise nothing opens. */
   selectEdge: (id: string | null) => void
+  /** Picks a relation line AND opens its settings panel: what a double-click on the line does. */
+  openEdgePanel: (id: string) => void
   loadSample: () => void
   /** Replace the canvas with a workspace loaded from the server. */
   loadWorkspace: (w: Workspace) => void
@@ -359,6 +365,7 @@ export const useStore = create<State>()(
       codeFormat: 'prisma',
       sidebarWidth: 420,
       selectedEdgeId: null,
+      edgePanelOpen: false,
 
       setProvider: (provider) => {
         // Other databases have other rules (e.g. MySQL integer sizes): drop relations that stop being valid.
@@ -485,6 +492,7 @@ export const useStore = create<State>()(
             columns: t.columns.map((col) => (col.id === sourceCol ? { ...col, references: reference } : col)),
           })),
           selectedEdgeId: `${c.source}:${sourceCol}`,
+          edgePanelOpen: true, // just drawn: its settings are the next thing wanted
         }))
       },
 
@@ -542,6 +550,7 @@ export const useStore = create<State>()(
           return {
             nodes: mapTable(s.nodes, tableId, (t) => ({ ...t, columns: [...t.columns, col] })),
             selectedEdgeId: `${tableId}:${col.id}`,
+            edgePanelOpen: true,
           }
         }),
 
@@ -618,6 +627,7 @@ export const useStore = create<State>()(
             manyToMany: [...s.manyToMany, link],
             pendingM2m: null,
             selectedEdgeId: M2M_PREFIX + link.id,
+            edgePanelOpen: true,
           }
         }),
 
@@ -732,7 +742,15 @@ export const useStore = create<State>()(
         }),
 
       setSelectedColumn: (selectedColumn) => set({ selectedColumn }),
-      selectEdge: (selectedEdgeId) => set({ selectedEdgeId, pendingM2m: null, selectedColumn: null }),
+      selectEdge: (selectedEdgeId) =>
+        set((s) => ({
+          selectedEdgeId,
+          edgePanelOpen: selectedEdgeId === null ? false : s.edgePanelOpen,
+          pendingM2m: null,
+          selectedColumn: null,
+        })),
+      openEdgePanel: (selectedEdgeId) =>
+        set({ selectedEdgeId, edgePanelOpen: true, pendingM2m: null, selectedColumn: null }),
       loadWorkspace: (w) =>
         set({
           provider: w.provider,
@@ -764,14 +782,17 @@ export const useStore = create<State>()(
   ),
 )
 
-// The side panel shows ONE thing at a time: the generated code or the selected relation's settings. Whichever the
-// user opens last wins. Done as a subscription (not in each action) because `selectedEdgeId` is set from many
-// places: clicking a line, drawing a new relation, adding a foreign key from the table, picking a many-to-many.
+// The side panel shows ONE thing at a time: the generated code or the picked relation's settings. Whichever the
+// user opens last wins. Done as a subscription (not in each action) because the relation panel is opened from several
+// places: a double-click on a line, drawing a new relation, adding a foreign key from the table, picking a many-to-many.
+const relationPanelShown = (s: Pick<State, 'selectedEdgeId' | 'edgePanelOpen'>) => s.selectedEdgeId !== null && s.edgePanelOpen
 useStore.subscribe((state, prev) => {
-  if (state.selectedEdgeId && !prev.selectedEdgeId && state.codeOpen) {
-    useStore.setState({ codeOpen: false }) // a relation was opened: hide the code
-  } else if (state.codeOpen && !prev.codeOpen && state.selectedEdgeId) {
-    useStore.setState({ selectedEdgeId: null }) // the code was opened: deselect the relation
+  if (state.selectedEdgeId === null && state.edgePanelOpen) {
+    useStore.setState({ edgePanelOpen: false }) // nothing is picked any more: the next pick must not pop the panel open
+  } else if (relationPanelShown(state) && !relationPanelShown(prev) && state.codeOpen) {
+    useStore.setState({ codeOpen: false }) // a relation's settings were opened: hide the code
+  } else if (state.codeOpen && !prev.codeOpen && relationPanelShown(state)) {
+    useStore.setState({ selectedEdgeId: null, edgePanelOpen: false }) // the code was opened: close the relation's panel
   }
 })
 

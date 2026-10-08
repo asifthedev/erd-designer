@@ -448,54 +448,84 @@ describe('side panel', () => {
     const { useStore } = await import('../store')
     const st = () => useStore.getState()
 
-    useStore.setState({ codeOpen: true, selectedEdgeId: null })
-    st().selectEdge('t1:c1') // open a relation while the code is showing
+    useStore.setState({ codeOpen: true, selectedEdgeId: null, edgePanelOpen: false })
+    st().openEdgePanel('t1:c1') // open a relation's settings while the code is showing
     expect(st().selectedEdgeId).toBe('t1:c1')
     expect(st().codeOpen).toBe(false)
 
-    st().toggleCode() // open the code while a relation is showing
+    st().toggleCode() // open the code while a relation's settings are showing
     expect(st().codeOpen).toBe(true)
     expect(st().selectedEdgeId).toBeNull()
+    expect(st().edgePanelOpen).toBe(false)
 
-    st().selectEdge('t1:c1')
-    st().selectEdge('t2:c2') // switching between relations keeps the code closed
+    st().openEdgePanel('t1:c1')
+    st().openEdgePanel('t2:c2') // switching between relations keeps the code closed
     expect(st().codeOpen).toBe(false)
     expect(st().selectedEdgeId).toBe('t2:c2')
 
     st().closeSidebar() // closing leaves both closed
     expect(st().codeOpen).toBe(false)
     expect(st().selectedEdgeId).toBeNull()
-  })
-})
-
-describe('hovering a table', () => {
-  it('lights up exactly the relation lines that touch it, and draws them on top', async () => {
-    const { useStore, deriveEdges } = await import('../store')
-    useStore.getState().loadSample()
-    const { nodes, manyToMany } = useStore.getState()
-    const id = (name: string) => nodes.find((n) => n.data.name === name)!.id
-    const hot = (hovered: string | null) =>
-      deriveEdges(nodes, manyToMany, null, hovered && id(hovered))
-        .filter((e) => (e.data as { hot: boolean }).hot)
-        .map((e) => [nodes.find((n) => n.id === e.source)!.data.name, nodes.find((n) => n.id === e.target)!.data.name].sort().join('-'))
-        .sort()
-
-    expect(hot(null)).toEqual([]) // nothing hovered: nothing lit
-    // posts is the hub of the sample: comments -> posts, posts -> users, and the posts <-> tags many-to-many
-    expect(hot('posts')).toEqual(['comments-posts', 'posts-tags', 'posts-users'])
-    expect(hot('comments')).toEqual(['comments-posts'])
-    expect(hot('users')).toEqual(['posts-users'])
-    expect(hot('tags')).toEqual(['posts-tags']) // the many-to-many link counts too
-
-    const lit = deriveEdges(nodes, manyToMany, null, id('comments'))
-    expect(lit.filter((e) => e.zIndex === 10)).toHaveLength(1)
-    expect(lit.filter((e) => e.zIndex === undefined)).toHaveLength(lit.length - 1)
+    expect(st().edgePanelOpen).toBe(false)
   })
 
-  it('is cleared when another diagram is loaded', async () => {
+  it('one click on a relation line only picks it: the settings panel does not open and the code stays', async () => {
     const { useStore } = await import('../store')
-    useStore.getState().setHoveredTable('some-table')
-    useStore.getState().loadWorkspace({ provider: 'postgresql', nodes: [], manyToMany: [] })
-    expect(useStore.getState().hoveredTableId).toBeNull()
+    const st = () => useStore.getState()
+    useStore.setState({ codeOpen: true, selectedEdgeId: null, edgePanelOpen: false })
+
+    st().selectEdge('t1:c1')
+    expect(st().selectedEdgeId).toBe('t1:c1') // the line is picked (it lights up, Delete would remove it) ...
+    expect(st().edgePanelOpen).toBe(false) // ... but its settings are not shown
+    expect(st().codeOpen).toBe(true) // and the code panel was not pushed out
+
+    st().selectEdge('t2:c2') // picking another line is still just a pick
+    expect(st().edgePanelOpen).toBe(false)
+    expect(st().codeOpen).toBe(true)
+
+    st().toggleCode() // closing and reopening the code does not drop the picked line
+    st().toggleCode()
+    expect(st().codeOpen).toBe(true)
+    expect(st().selectedEdgeId).toBe('t2:c2')
+  })
+
+  it('a double-click opens the settings; once open they follow the picked line, and clearing the pick closes them for good', async () => {
+    const { useStore } = await import('../store')
+    const st = () => useStore.getState()
+    useStore.setState({ codeOpen: true, selectedEdgeId: null, edgePanelOpen: false })
+
+    st().openEdgePanel('t1:c1')
+    expect(st().edgePanelOpen).toBe(true)
+    st().selectEdge('t2:c2') // a click on another line while the panel is open: the panel shows that one
+    expect(st().selectedEdgeId).toBe('t2:c2')
+    expect(st().edgePanelOpen).toBe(true)
+
+    st().selectEdge(null) // a click on the empty canvas
+    expect(st().edgePanelOpen).toBe(false)
+    st().selectEdge('t1:c1') // the next single click must not bring the panel back
+    expect(st().edgePanelOpen).toBe(false)
+  })
+
+  it('deselecting by any other route (deleting the line, the table, ...) also resets the panel', async () => {
+    const { useStore } = await import('../store')
+    const st = () => useStore.getState()
+    st().openEdgePanel('t1:c1')
+    useStore.setState({ selectedEdgeId: null }) // e.g. the relation was deleted
+    expect(st().edgePanelOpen).toBe(false)
+    st().selectEdge('t3:c3')
+    expect(st().edgePanelOpen).toBe(false)
+  })
+
+  it('a relation the person has just made is the exception: its settings open at once', async () => {
+    const { useStore } = await import('../store')
+    const st = () => useStore.getState()
+    st().loadSample()
+    useStore.setState({ codeOpen: true, selectedEdgeId: null, edgePanelOpen: false })
+    const [users, comments] = [st().nodes.find((n) => n.data.name === 'users')!, st().nodes.find((n) => n.data.name === 'comments')!]
+    st().pickManyToMany(users.id)
+    st().pickManyToMany(comments.id) // creates a many-to-many link
+    expect(st().selectedEdgeId?.startsWith('m2m:')).toBe(true)
+    expect(st().edgePanelOpen).toBe(true)
+    expect(st().codeOpen).toBe(false)
   })
 })

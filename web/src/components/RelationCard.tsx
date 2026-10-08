@@ -171,6 +171,7 @@ function Choice({
 /** Settings for the selected relation (foreign key or many-to-many link). */
 export function RelationCard() {
   const selectedEdgeId = useStore((s) => s.selectedEdgeId)
+  const panelOpen = useStore((s) => s.edgePanelOpen)
   const nodes = useStore((s) => s.nodes)
   const manyToMany = useStore((s) => s.manyToMany)
   const updateColumn = useStore((s) => s.updateColumn)
@@ -180,7 +181,7 @@ export function RelationCard() {
   const convertToJunction = useStore((s) => s.convertToJunction)
   const setRelationBend = useStore((s) => s.setRelationBend)
 
-  if (!selectedEdgeId) return null
+  if (!selectedEdgeId || !panelOpen) return null // a picked line only shows its settings once asked (double-click)
 
   if (selectedEdgeId.startsWith(M2M_PREFIX)) {
     const id = selectedEdgeId.slice(M2M_PREFIX.length)

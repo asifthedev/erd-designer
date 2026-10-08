@@ -53,6 +53,7 @@ function Canvas() {
   const onNodesChange = useStore((s) => s.onNodesChange)
   const connect = useStore((s) => s.connect)
   const selectEdge = useStore((s) => s.selectEdge)
+  const openEdgePanel = useStore((s) => s.openEdgePanel)
   const removeReference = useStore((s) => s.removeReference)
   const deleteTable = useStore((s) => s.deleteTable)
   const deleteColumn = useStore((s) => s.deleteColumn)
@@ -152,8 +153,10 @@ function Canvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={connect}
+        // One click only picks the line (it lights up); its settings open on a double-click. Deleting a relation is
+        // the Delete key on the picked line, or "Delete relation" in its right-click menu.
         onEdgeClick={(_, edge) => selectEdge(edge.id)}
-        onEdgeDoubleClick={(_, edge) => deleteEdge(edge.id)}
+        onEdgeDoubleClick={(_, edge) => openEdgePanel(edge.id)}
         zoomOnDoubleClick={false}
         onPaneClick={() => selectEdge(null)}
         // While a column is selected the Delete key belongs to the column, not to its table.
@@ -408,7 +411,7 @@ function SidebarResizer() {
 function Editor() {
   const codeOpen = useStore((s) => s.codeOpen)
   const sidebarWidth = useStore((s) => s.sidebarWidth)
-  const hasRelation = useStore((s) => s.selectedEdgeId !== null)
+  const hasRelation = useStore((s) => s.selectedEdgeId !== null && s.edgePanelOpen)
   const closeSidebar = useStore((s) => s.closeSidebar)
   const listOpen = useStore((s) => s.listOpen)
   const authed = useAuth((s) => s.status === 'authed')
