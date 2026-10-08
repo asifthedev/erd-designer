@@ -139,12 +139,22 @@ const n2 = (v: number) => Math.round(v * 100) / 100
 const at = ([x, y]: Pt) => `${n2(x)},${n2(y)}`
 
 /**
- * The Curved line style. Same start and end as the orthogonal route (a short straight stub out of each table keeps
- * the cardinality glyph clean), but between the stubs the line flows through one middle point M in smooth curves:
- *  - tables side by side: an S-curve, level where it leaves, passes M and arrives (it never leaves the gap)
- *  - tables stacked (both ends on the same side): a wide C-curve that bulges out beyond both, M at its outer edge
- * M starts halfway and is moved by the drag: bend.x sideways, bend.cy up / down. Nothing else is stored.
+ * The Curved line style: one smooth Bezier from the column on one table to the column on the other, leaving and
+ * arriving level, like the default curve of React Flow (so side-by-side tables get a plain S-curve). Tables whose
+ * lines leave the same side get a C-curve that bulges out beyond both; the bulge never gets smaller than MIN_LOOP,
+ * so a table linked to itself still draws a visible loop.
+ *
+ * Moving the line: the curve is drawn as two halves meeting at its middle point M, with the tangent the single
+ * curve has there. Un-moved, the two halves ARE the single curve (splitting a Bezier at t = 0.5 changes nothing).
+ * A drag moves M by exactly the pointer's movement (bend.x sideways, bend.cy up / down); the ends stay put and
+ * level, and the curve stays smooth through M.
  */
+const MIN_LOOP = 60
+const CURVATURE = 0.25 // React Flow's default
+
+/** React Flow's handle length: half the distance, or (when the other end is behind) a root-shaped bulge. */
+const handleLength = (distance: number) => (distance >= 0 ? 0.5 * distance : CURVATURE * 25 * Math.sqrt(-distance))
+
 export function curveGeometry(
   sx: number,
   sy: number,
@@ -154,28 +164,22 @@ export function curveGeometry(
   tDir: Dir,
   bend?: Bend,
 ): { d: string; mid: Pt } {
-  const stub = stubLength(sx, sDir, tx, tDir)
-  const A: Pt = [sx + sDir * stub, sy]
-  const B: Pt = [tx + tDir * stub, ty]
-  const M: Pt = [routeX(sx, sDir, tx, ty, tDir, bend), (sy + ty) / 2 + (bend?.cy ?? 0)]
-  const head = `M${at([sx, sy])}L${at(A)}`
-  const tail = `L${at([tx, ty])}`
+  const loop = sDir === tDir ? (v: number) => Math.max(v, MIN_LOOP) : (v: number) => v
+  // Distance towards the other end, measured in the direction the line leaves.
+  const p0: Pt = [sx, sy]
+  const p3: Pt = [tx, ty]
+  const p1: Pt = [sx + sDir * loop(handleLength((tx - sx) * sDir)), sy]
+  const p2: Pt = [tx + tDir * loop(handleLength((sx - tx) * tDir)), ty]
 
-  if (sDir !== tDir) {
-    // S-curves with a level tangent at A, M and B: control points sit halfway along x, at the height of their end.
-    const half = (p: Pt, q: Pt) => (p[0] + q[0]) / 2
-    const x1 = half(A, M)
-    const x2 = half(M, B)
-    return {
-      d: `${head}C${n2(x1)},${n2(A[1])} ${n2(x1)},${n2(M[1])} ${at(M)}C${n2(x2)},${n2(M[1])} ${n2(x2)},${n2(B[1])} ${at(B)}${tail}`,
-      mid: M,
-    }
-  }
-  // Same side: out to the lane, round its outer edge (vertical tangent at M), and back in.
-  const y1 = (A[1] + M[1]) / 2
-  const y2 = (M[1] + B[1]) / 2
-  return {
-    d: `${head}C${n2(M[0])},${n2(A[1])} ${n2(M[0])},${n2(y1)} ${at(M)}C${n2(M[0])},${n2(y2)} ${n2(M[0])},${n2(B[1])} ${at(B)}${tail}`,
-    mid: M,
-  }
+  // The single curve's middle point and tangent there, then M = that point moved by the drag.
+  const mid0: Pt = [(p0[0] + 3 * p1[0] + 3 * p2[0] + p3[0]) / 8, (p0[1] + 3 * p1[1] + 3 * p2[1] + p3[1]) / 8]
+  const tan: Pt = [0.75 * (p3[0] + p2[0] - p1[0] - p0[0]), 0.75 * (p3[1] + p2[1] - p1[1] - p0[1])]
+  const m: Pt = [mid0[0] + (bend?.x ?? 0), mid0[1] + (bend?.cy ?? 0)]
+
+  // De Casteljau split at t = 0.5, with the middle point and tangent as the join.
+  const c1: Pt = [p0[0] + (p1[0] - p0[0]) / 2, p0[1] + (p1[1] - p0[1]) / 2]
+  const c2: Pt = [m[0] - tan[0] / 6, m[1] - tan[1] / 6]
+  const c3: Pt = [m[0] + tan[0] / 6, m[1] + tan[1] / 6]
+  const c4: Pt = [p3[0] - (p3[0] - p2[0]) / 2, p3[1] - (p3[1] - p2[1]) / 2]
+  return { d: `M${at(p0)}C${at(c1)} ${at(c2)} ${at(m)}C${at(c3)} ${at(c4)} ${at(p3)}`, mid: m }
 }

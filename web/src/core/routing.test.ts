@@ -218,49 +218,87 @@ describe('moving the parts of a line', () => {
 
 describe('curved line style', () => {
   type Args = readonly [number, number, Dir, number, number, Dir]
-  const across: Args = [680, 100, 1, 1000, 500, -1] // tables side by side
+  const across: Args = [203, 72, 1, 422, 179, -1] // tables side by side (the example page's first line)
   const bracket: Args = [680, 100, 1, 600, 500, 1] // both lines leave the right side (stacked tables)
-  const nums = (d: string) => (d.match(/-?\d+(\.\d+)?/g) ?? []).map(Number)
+  const selfLink: Args = [680, 100, 1, 680, 300, 1] // a table linked to itself: both ends on one edge
 
-  it('starts and ends exactly on the columns, with a straight stub at each end', () => {
-    for (const args of [across, bracket]) {
-      const { d } = curveGeometry(...args)
-      expect(d.startsWith(`M${args[0]},${args[1]}L`)).toBe(true)
-      expect(d.endsWith(`L${args[3]},${args[4]}`)).toBe(true)
-      expect(d).not.toMatch(/NaN|undefined/)
+  /** Reads `M x,y C ... C ...` into its 3 + 3 + 1 points. */
+  const parse = (d: string) => {
+    const n = (d.match(/-?\d+(\.\d+)?/g) ?? []).map(Number)
+    expect(n).toHaveLength(14)
+    const pt = (i: number): [number, number] => [n[2 * i], n[2 * i + 1]]
+    return { p0: pt(0), c1: pt(1), c2: pt(2), m: pt(3), c3: pt(4), c4: pt(5), p3: pt(6) }
+  }
+  const bez = (p: number[][], t: number) =>
+    [0, 1].map(
+      (k) =>
+        (1 - t) ** 3 * p[0][k] + 3 * (1 - t) ** 2 * t * p[1][k] + 3 * (1 - t) * t ** 2 * p[2][k] + t ** 3 * p[3][k],
+    )
+
+  it('is the same single smooth curve as React Flow draws between side-by-side tables', () => {
+    // From the example page: M203,72 C312.5,72 312.5,179 422,179
+    const { p0, c1, c2, m, c3, c4, p3 } = parse(curveGeometry(...across).d)
+    const single = [
+      [203, 72],
+      [312.5, 72],
+      [312.5, 179],
+      [422, 179],
+    ]
+    expect(p0).toEqual([203, 72])
+    expect(p3).toEqual([422, 179])
+    expect(m).toEqual([312.5, 125.5]) // halfway
+    // Both halves lie exactly on the single curve: the first is t 0..0.5 of it, the second t 0.5..1.
+    for (const u of [0, 0.25, 0.5, 0.75, 1]) {
+      const [a1, a2] = [bez([p0, c1, c2, m], u), bez(single, u / 2)]
+      const [b1, b2] = [bez([m, c3, c4, p3], u), bez(single, 0.5 + u / 2)]
+      for (const k of [0, 1]) {
+        expect(a1[k]).toBeCloseTo(a2[k], 1)
+        expect(b1[k]).toBeCloseTo(b2[k], 1)
+      }
     }
-    const stub = STUB
-    expect(curveGeometry(...across).d.startsWith(`M680,100L${680 + stub},100C`)).toBe(true)
   })
 
-  it('goes through its middle point, which starts halfway and follows the drag (x sideways, cy up / down)', () => {
+  it('leaves and arrives level, right on the columns', () => {
+    for (const args of [across, bracket, selfLink]) {
+      const { p0, c1, c4, p3 } = parse(curveGeometry(...args).d)
+      expect(p0).toEqual([args[0], args[1]])
+      expect(p3).toEqual([args[3], args[4]])
+      expect(c1[1]).toBe(args[1]) // first handle is level with the start
+      expect(c4[1]).toBe(args[4]) // last handle is level with the end
+      expect(curveGeometry(...args).d).not.toMatch(/NaN|undefined/)
+    }
+  })
+
+  it('the middle point follows the drag exactly (x sideways, cy up / down), the ends stay', () => {
     const base = curveGeometry(...across).mid
-    expect(base[1]).toBe(300) // halfway between the two heights
-    expect(curveGeometry(...across, { x: 40, y: 0 }).mid).toEqual([base[0] + 40, 300])
-    expect(curveGeometry(...across, { x: 0, y: 0, cy: -70 }).mid).toEqual([base[0], 230])
-    expect(curveGeometry(...across, { x: 0, y: 0, cy: -70 }).d).toContain(`${base[0]},230`)
+    expect(curveGeometry(...across, { x: 40, y: 0 }).mid).toEqual([base[0] + 40, base[1]])
+    expect(curveGeometry(...across, { x: 0, y: 0, cy: -70 }).mid).toEqual([base[0], base[1] - 70])
+    const moved = parse(curveGeometry(...across, { x: 25, y: 0, cy: 60 }).d)
+    expect(moved.p0).toEqual([203, 72])
+    expect(moved.p3).toEqual([422, 179])
   })
 
-  it('stays inside the gap between the tables until it is dragged out', () => {
-    const xs = nums(curveGeometry(...across).d).filter((_, i) => i % 2 === 0)
-    for (const x of xs) {
-      expect(x).toBeGreaterThanOrEqual(680)
-      expect(x).toBeLessThanOrEqual(1000)
-    }
+  it('stays smooth through the middle after a drag (both halves share its tangent)', () => {
+    const { c2, m, c3 } = parse(curveGeometry(...across, { x: 30, y: 0, cy: -90 }).d)
+    expect(c2[0] + c3[0]).toBeCloseTo(2 * m[0], 1) // m is the midpoint of its two handles, so the line is smooth
+    expect(c2[1] + c3[1]).toBeCloseTo(2 * m[1], 1)
   })
 
-  it('stacked tables get a C-curve that bulges out beyond both, with its outer edge at the lane', () => {
-    const { d, mid } = curveGeometry(...bracket)
-    expect(mid[0]).toBe(routeX(680, 1, 600, 500, 1)) // the same lane as the orthogonal line
-    expect(mid[0]).toBeGreaterThan(680)
-    expect(nums(d).every((v) => v <= mid[0])).toBe(true)
+  it('stacked tables get a C-curve that bulges out past both', () => {
+    const { c1, c4, m } = parse(curveGeometry(...bracket).d)
+    expect(c1[0]).toBeGreaterThan(680) // the handle out of the first table reaches past its right edge
+    expect(c4[0]).toBeGreaterThan(600) // and the one into the second table past its own
+    expect(m[0]).toBeGreaterThan(680) // the middle of the curve is outside both
   })
 
-  it('the up / down offsets of the orthogonal style (ys, yt) do not change a curve', () => {
+  it('a table linked to itself still draws a visible loop (never a flat line on its border)', () => {
+    const { m, c1 } = parse(curveGeometry(...selfLink).d)
+    expect(c1[0]).toBeGreaterThanOrEqual(680 + 30)
+    expect(m[0]).toBeGreaterThan(680 + 30)
+  })
+
+  it('the up / down offsets of the orthogonal style (ys, yt) do not change a curve, and cy does not change an orthogonal line', () => {
     expect(curveGeometry(...across, { x: 0, y: 0, ys: -90, yt: 60 })).toEqual(curveGeometry(...across))
-  })
-
-  it('and the curve offset (cy) does not change an orthogonal line', () => {
     expect(routePoints(...across, { x: 0, y: 0, cy: 80 })).toEqual(routePoints(...across))
   })
 })
