@@ -8,7 +8,7 @@ left sidebar) and open them on any device.
 
 The gear icon in the toolbar opens **Settings** (saved in this browser):
 
-- **Theme**: Midnight (default), Dracula, Vercel, Warm Dark or Eraser (coloured tables, with a colour menu per table). The palettes are CSS tokens in
+- **Theme**: Midnight (default), Dracula, Vercel, Warm Dark, Eraser (coloured tables, with a colour menu per table) or Violet (purple primary, `#6c5ce7`). The palettes are CSS tokens in
   `web/src/index.css`; a test checks that every theme defines the full set and keeps text readable (WCAG contrast).
 - **Line style**: **Orthogonal** (default: right-angle lines; drag the vertical part left / right and the horizontal
   parts up / down) or **Curved** (smooth, fluid curves; drag the curve by its middle in any direction). Both start and

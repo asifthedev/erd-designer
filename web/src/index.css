@@ -488,6 +488,32 @@ body {
   --color-mask: rgb(28 25 23 / 72%);
 }
 
+/* Violet: neutral near-black with a purple primary colour (#6c5ce7) for buttons, highlights and the active diagram. */
+[data-theme='violet'] {
+  color-scheme: dark;
+  --color-canvas: #141416;
+  --color-grid: #19191c;
+  --color-dot: #28282e;
+  --color-surface: #1b1b1f;
+  --color-row: #212127;
+  --color-line: #303038;
+  --color-edge: #7c7c8f;
+  --color-ink: #e8e8f0;
+  --color-muted: #8d8da1;
+  --color-key: #6c5ce7;
+  --color-num: #f2b866;
+  --color-ok: #55d88c;
+  --color-link: #a29bfe;
+  --color-link-flow: #e0dcff;
+  --color-danger: #ff6b81;
+  --color-warning: #ffa94d;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #25252b;
+  --color-hover: rgb(255 255 255 / 7%);
+  --color-hover-strong: rgb(255 255 255 / 11%);
+  --color-mask: rgb(20 20 22 / 70%);
+}
+
 /*
  * Eraser: near-black canvas, white relation lines and coloured tables (see ".erd-table" below). Only this theme
  * moves the table icon to the right and offers the per-table colour menu.

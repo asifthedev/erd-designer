@@ -66,9 +66,9 @@ describe('themes', () => {
     expect(c('line', 'canvas'), 'borders are visible against the canvas').toBeGreaterThanOrEqual(1.15)
   })
 
-  it('offers Midnight (the default), Dracula, Vercel, Warm Dark and Eraser', () => {
+  it('offers Midnight (the default), Dracula, Vercel, Warm Dark, Eraser and Violet', () => {
     expect(DEFAULT_SETTINGS.theme).toBe('midnight')
-    expect(THEMES.map((t) => t.id)).toEqual(['midnight', 'dracula', 'vercel', 'warm', 'eraser'])
+    expect(THEMES.map((t) => t.id)).toEqual(['midnight', 'dracula', 'vercel', 'warm', 'eraser', 'violet'])
   })
 })
 
@@ -174,5 +174,13 @@ describe('line style setting', () => {
     for (const bad of ['zigzag', 42, null, {}, 'CURVED'])
       expect(sanitize({ edgeStyle: bad }).edgeStyle).toBe('orthogonal')
     expect(sanitize({ edgeStyle: 'curved' }).edgeStyle).toBe('curved')
+  })
+})
+
+describe('Violet theme', () => {
+  it('uses #6c5ce7 as its primary colour, with white text on it', () => {
+    const t = themeTokens('violet')
+    expect(t['--color-key']).toBe('#6c5ce7')
+    expect(t['--color-primary-foreground']).toBe('#ffffff')
   })
 })

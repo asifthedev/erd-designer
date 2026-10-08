@@ -13,6 +13,7 @@ export const THEMES = [
   { id: 'vercel', name: 'Vercel', note: 'Pure black' },
   { id: 'warm', name: 'Warm Dark', note: 'Cream and amber' },
   { id: 'eraser', name: 'Eraser', note: 'Coloured tables' },
+  { id: 'violet', name: 'Violet', note: 'Purple primary' },
 ] as const
 export type ThemeId = (typeof THEMES)[number]['id']
 

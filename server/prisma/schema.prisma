@@ -44,6 +44,8 @@ model Diagram {
   userId    String   @map("user_id")
   title     String   @default("Untitled diagram")
   data      Json
+  /// Shown in the "Pinned" part of the sidebar, above the recent diagrams.
+  pinned    Boolean  @default(false)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

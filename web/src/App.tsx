@@ -252,8 +252,8 @@ function Canvas() {
             <button
               type="button"
               onClick={toggleList}
-              title="Show your ERDs"
-              aria-label="Show the list of ERDs"
+              title="Show your diagrams"
+              aria-label="Show the list of diagrams"
               className="grid size-9 cursor-pointer place-items-center rounded-md border border-line bg-surface text-ink shadow-lg shadow-black/30 hover:border-key hover:text-key"
             >
               <PanelLeftOpen size={18} />

@@ -104,10 +104,12 @@ const title = z.string().trim().min(1, 'Give the diagram a name').max(100, 'Use 
 /** POST /diagrams: both fields optional, so "New ERD" can create a blank one. */
 export const createDiagramSchema = z.object({ title: title.optional(), data: diagramSchema.optional() })
 
-/** PUT /diagrams/:id: rename, save the content, or both in one request. */
+/** PUT /diagrams/:id: rename, save the content, pin / unpin, or any of them in one request. */
 export const updateDiagramSchema = z
-  .object({ title: title.optional(), data: diagramSchema.optional() })
-  .refine((v) => v.title !== undefined || v.data !== undefined, { message: 'Nothing to update' })
+  .object({ title: title.optional(), data: diagramSchema.optional(), pinned: z.boolean().optional() })
+  .refine((v) => v.title !== undefined || v.data !== undefined || v.pinned !== undefined, {
+    message: 'Nothing to update',
+  })
 
 /** What a brand-new diagram contains. */
 export const BLANK_DIAGRAM: DiagramPayload = { provider: 'postgresql', nodes: [], manyToMany: [] }

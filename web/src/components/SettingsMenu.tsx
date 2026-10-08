@@ -70,8 +70,11 @@ const segment = (active: boolean) =>
     active ? 'border-key bg-key/15 text-key' : 'border-line text-ink hover:border-edge hover:bg-hover'
   }`
 
-/** Toolbar button + popover with the look settings: theme, and the font / weight used inside the tables. */
-export function SettingsMenu() {
+/**
+ * Button + popover with the look settings: theme, line style, and the font / weight used inside the tables.
+ * `inSidebar` is the quiet gear at the foot of the diagram list (the menu opens beside it); the default is the toolbar one.
+ */
+export function SettingsMenu({ inSidebar = false }: { inSidebar?: boolean }) {
   const { theme, tableFont, tableWeight, edgeStyle, setTableFont, setTableWeight, setEdgeStyle, reset } = useSettings()
   const [open, setOpen] = useState(false)
   useCloseOnOutsidePointer(open, () => setOpen(false)) // a click on the canvas (or anywhere else) closes the menu
@@ -88,12 +91,16 @@ export function SettingsMenu() {
           type="button"
           title="Settings"
           aria-label="Settings"
-          className="grid size-8 cursor-pointer place-items-center rounded-md border border-line text-muted hover:border-key hover:text-key"
+          className={
+            inSidebar
+              ? 'grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg text-muted hover:bg-hover hover:text-ink'
+              : 'grid size-8 cursor-pointer place-items-center rounded-md border border-line text-muted hover:border-key hover:text-key'
+          }
         >
           <Settings size={16} />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="font-ui w-[22rem] p-3">
+      <PopoverContent side={inSidebar ? 'right' : 'bottom'} align="end" className="font-ui w-[22rem] p-3">
         <div className="mb-3 flex items-center">
           <h2 className="mr-auto font-semibold">Settings</h2>
           <button

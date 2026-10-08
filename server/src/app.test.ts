@@ -545,6 +545,56 @@ describe.skipIf(!hasDb)('API (integration, real PostgreSQL)', () => {
       expect(emptyOne.body.diagram.data).toEqual({ provider: 'postgresql', nodes: [], manyToMany: [] })
     })
 
+    it('lists each diagram with its table count and database, without loading the content', async () => {
+      const u = await signUp()
+      await create(u, { title: 'Shop', data: diagram })
+      await create(u, { title: 'MySQL one', data: { ...diagram, provider: 'mysql', nodes: [...diagram.nodes, { ...diagram.nodes[0], id: 't2', data: { ...diagram.nodes[0].data, id: 't2', name: 'posts' } }] } })
+      const blank = await create(u)
+      expect(blank.body.diagram).toMatchObject({ tableCount: 0, provider: 'postgresql', pinned: false })
+
+      const list = (await request(app).get('/api/diagrams').set('Cookie', u.cookie)).body.diagrams
+      expect(list.map((d: { title: string; tableCount: number; provider: string }) => [d.title, d.tableCount, d.provider])).toEqual([
+        ['Shop', 1, 'postgresql'],
+        ['MySQL one', 2, 'mysql'],
+        ['Untitled diagram', 0, 'postgresql'],
+      ])
+      expect(typeof list[0].updatedAt).toBe('string')
+
+      // Saving new content refreshes both numbers in the reply, so the sidebar can update without a reload.
+      const grown = structuredClone(diagram)
+      grown.provider = 'sqlite'
+      const saved = await put(u, blank.body.diagram.id, { data: grown })
+      expect(saved.body).toMatchObject({ tableCount: 1, provider: 'sqlite', pinned: false })
+    })
+
+    it('pins and unpins a diagram without counting as an edit', async () => {
+      const u = await signUp()
+      const { id, updatedAt } = (await create(u, { title: 'Shop', data: diagram })).body.diagram
+      await new Promise((r) => setTimeout(r, 15)) // so a changed updatedAt would be visible
+
+      const pinned = await put(u, id, { pinned: true })
+      expect(pinned.status).toBe(200)
+      expect(pinned.body).toMatchObject({ pinned: true, title: 'Shop' })
+      expect(new Date(pinned.body.updatedAt).getTime()).toBe(new Date(updatedAt).getTime()) // not "edited"
+
+      const list = (await request(app).get('/api/diagrams').set('Cookie', u.cookie)).body.diagrams
+      expect(list[0]).toMatchObject({ id, pinned: true })
+      expect((await put(u, id, { pinned: false })).body.pinned).toBe(false)
+      expect((await put(u, id, { pinned: 'yes' })).status).toBe(400)
+
+      // pinning together with a rename is a real edit and works in one request
+      const both = await put(u, id, { pinned: true, title: 'Shop 2' })
+      expect(both.body).toMatchObject({ pinned: true, title: 'Shop 2' })
+    })
+
+    it("does not let anyone pin another user's diagram", async () => {
+      const a = await signUp()
+      const b = await signUp()
+      const id = (await create(a, { title: 'Mine' })).body.diagram.id
+      expect((await put(b, id, { pinned: true })).status).toBe(404)
+      expect((await request(app).get('/api/diagrams').set('Cookie', a.cookie)).body.diagrams[0].pinned).toBe(false)
+    })
+
     it('saves content, renames, or both; an empty update is rejected', async () => {
       const u = await signUp()
       const { id } = (await create(u, { title: 'A' })).body.diagram

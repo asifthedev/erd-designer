@@ -1,5 +1,6 @@
 import { toast } from 'sonner'
 import { create } from 'zustand'
+import type { Provider } from '../core/model'
 import { toWorkspace, useStore, type Workspace } from '../store'
 import { api, ApiError } from './api'
 
@@ -8,7 +9,16 @@ export type AuthUser = { id: string; email: string; name: string | null }
 export type AuthStatus = 'loading' | 'anonymous' | 'authed' | 'guest'
 export type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 /** One saved ERD as the sidebar lists it (the content is only fetched when it is opened). */
-export type DiagramMeta = { id: string; title: string; updatedAt: string }
+export type DiagramMeta = {
+  id: string
+  title: string
+  updatedAt: string
+  /** Shown in the sidebar's "Pinned" part. */
+  pinned?: boolean
+  /** How many tables it has and which database it targets, for the sidebar (the server reads them from the content). */
+  tableCount?: number
+  provider?: Provider
+}
 
 /** The server refuses more than this per account (keep in sync with MAX_DIAGRAMS_PER_USER there). */
 export const MAX_DIAGRAMS = 50
@@ -59,6 +69,8 @@ type AuthState = {
   /** Creates a blank ERD and opens it. Resolves to its id, or null when it could not be created. */
   createDiagram: () => Promise<string | null>
   renameDiagram: (id: string, title: string) => Promise<void>
+  /** Pins or unpins an ERD in the sidebar (shown at once, rolled back if the server refuses). */
+  setPinned: (id: string, pinned: boolean) => Promise<void>
   deleteDiagram: (id: string) => Promise<void>
 }
 
@@ -251,17 +263,18 @@ export const useAuth = create<AuthState>()((set, get) => {
       if (body === lastSaved) return
       set({ save: 'saving' })
       try {
-        const { updatedAt } = await api<{ updatedAt: string }>(`/diagrams/${currentId}`, {
+        const saved = await api<{ updatedAt: string; tableCount?: number; provider?: Provider }>(`/diagrams/${currentId}`, {
           method: 'PUT',
           body: { data: JSON.parse(body) },
           keepalive: options?.keepalive,
         })
+        const { updatedAt, tableCount, provider } = saved
         lastSaved = body
         sessionCache.set(currentId, { data: JSON.parse(body), updatedAt })
         set((s) => ({
           save: 'saved',
           savedAt: Date.now(),
-          diagrams: s.diagrams.map((d) => (d.id === currentId ? { ...d, updatedAt } : d)),
+          diagrams: s.diagrams.map((d) => (d.id === currentId ? { ...d, updatedAt, tableCount, provider } : d)),
         }))
       } catch (e) {
         set({ save: 'error' })
@@ -329,10 +342,25 @@ export const useAuth = create<AuthState>()((set, get) => {
         set((s) => ({ diagrams: s.diagrams.map((d) => (d.id === id ? { ...d, title: t } : d)) }))
       setTitle(next) // optimistic: the list updates at once and rolls back if the server says no
       try {
-        await api(`/diagrams/${id}`, { method: 'PUT', body: { title: next } })
+        const { updatedAt } = await api<{ updatedAt: string }>(`/diagrams/${id}`, { method: 'PUT', body: { title: next } })
+        set((s) => ({ diagrams: s.diagrams.map((d) => (d.id === id ? { ...d, updatedAt } : d)) }))
       } catch (e) {
         setTitle(before.title)
         fail(e, 'Could not rename the diagram')
+      }
+    },
+
+    setPinned: async (id, pinned) => {
+      const before = get().diagrams.find((d) => d.id === id)
+      if (!before || !!before.pinned === pinned) return
+      const mark = (value: boolean) =>
+        set((s) => ({ diagrams: s.diagrams.map((d) => (d.id === id ? { ...d, pinned: value } : d)) }))
+      mark(pinned) // shown at once; the server only has to agree
+      try {
+        await api(`/diagrams/${id}`, { method: 'PUT', body: { pinned } })
+      } catch (e) {
+        mark(!!before.pinned)
+        fail(e, pinned ? 'Could not pin the diagram' : 'Could not unpin the diagram')
       }
     },
 
