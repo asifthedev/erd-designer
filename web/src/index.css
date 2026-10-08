@@ -494,20 +494,21 @@ body {
   --color-muted: color-mix(in srgb, var(--name) 55%, var(--body));
   color: var(--name);
   border-color: var(--border);
+  border-width: 2px;
   border-radius: 8px;
 }
 [data-theme='eraser'] .erd-table[data-selected='true'] {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--border) 55%, transparent), 0 14px 30px -12px rgb(0 0 0 / 60%);
 }
 /*
- * Title bar in the canvas colour (#171717). The corners of the bar and of the last row follow the card's rounded border (8px minus its 1px
+ * Title bar in the canvas colour (#171717). The corners of the bar and of the last row follow the card's rounded border (8px minus its 2px
  * line), otherwise their square corners stick out past the curve and hide the border there.
  */
 [data-theme='eraser'] .erd-table .erd-header {
   background: #171717;
-  border-radius: 7px 7px 0 0;
+  border-radius: 6px 6px 0 0;
 }
-[data-theme='eraser'] .erd-table .erd-last { border-radius: 0 0 7px 7px; }
+[data-theme='eraser'] .erd-table .erd-last { border-radius: 0 0 6px 6px; }
 /* The icon moves from before the title to the far right; the colour menu sits just left of it. */
 [data-theme='eraser'] .erd-table .erd-icon { order: 5; }
 [data-theme='eraser'] .erd-table .erd-colors { order: 4; }
