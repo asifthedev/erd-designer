@@ -1,4 +1,6 @@
 import { toast } from 'sonner'
+import { showProblem } from '../components/problemToast'
+import { planLimitProblem } from '../core/problems'
 import { create } from 'zustand'
 import type { Provider } from '../core/model'
 import { toWorkspace, useStore, type Workspace } from '../store'
@@ -20,8 +22,9 @@ export type DiagramMeta = {
   provider?: Provider
 }
 
-/** The server refuses more than this per account (keep in sync with MAX_DIAGRAMS_PER_USER there). */
-export const MAX_DIAGRAMS = 50
+/** What the account's plan allows (the server decides and sends it with the list of diagrams). */
+export type Plan = { name: string; maxDiagrams: number }
+const FREE_PLAN: Plan = { name: 'free', maxDiagrams: 1 }
 const DEFAULT_TITLE = 'Untitled diagram'
 /** What the server round trip is for, so the UI can say so (a spinner on the row / button, a note over the canvas). */
 export type Loading = {
@@ -39,6 +42,8 @@ type AuthState = {
   ready: boolean
   save: SaveState
   savedAt: number | null
+  /** The account's plan, which says how many diagrams it may have. */
+  plan: Plan
   /** The account's ERDs (oldest first) and which one is on the canvas. */
   diagrams: DiagramMeta[]
   currentId: string | null
@@ -103,6 +108,10 @@ export const useAuth = create<AuthState>()((set, get) => {
       })
       return
     }
+    if (e instanceof ApiError && e.code === 'plan_limit') {
+      showProblem(planLimitProblem(get().plan.maxDiagrams), 'warning')
+      return
+    }
     toast.error(title, { id, description: (e as Error).message, closeButton: true, duration: Infinity })
   }
 
@@ -158,9 +167,19 @@ export const useAuth = create<AuthState>()((set, get) => {
   /** Signed in: open the most recently edited ERD, or turn what is on the canvas into the first one. */
   async function enter(user: AuthUser) {
     sessionCache.clear() // never carry one account's diagrams over to the next
-    set({ status: 'authed', user, ready: false, save: 'idle', diagrams: [], currentId: null, switching: false, loading: null })
+    set({
+      status: 'authed',
+      user,
+      ready: false,
+      save: 'idle',
+      diagrams: [],
+      currentId: null,
+      switching: false,
+      loading: null,
+    })
     try {
-      const { diagrams } = await api<{ diagrams: DiagramMeta[] }>('/diagrams')
+      const { diagrams, plan } = await api<{ diagrams: DiagramMeta[]; plan?: Plan }>('/diagrams')
+      if (plan) set({ plan })
       if (!diagrams.length) {
         const { diagram } = await api<{ diagram: DiagramMeta }>('/diagrams', {
           body: { title: 'My first ERD', data: JSON.parse(snapshot()) },
@@ -188,6 +207,7 @@ export const useAuth = create<AuthState>()((set, get) => {
     ready: false,
     save: 'idle',
     savedAt: null,
+    plan: FREE_PLAN,
     diagrams: [],
     currentId: null,
     switching: false,
@@ -263,11 +283,14 @@ export const useAuth = create<AuthState>()((set, get) => {
       if (body === lastSaved) return
       set({ save: 'saving' })
       try {
-        const saved = await api<{ updatedAt: string; tableCount?: number; provider?: Provider }>(`/diagrams/${currentId}`, {
-          method: 'PUT',
-          body: { data: JSON.parse(body) },
-          keepalive: options?.keepalive,
-        })
+        const saved = await api<{ updatedAt: string; tableCount?: number; provider?: Provider }>(
+          `/diagrams/${currentId}`,
+          {
+            method: 'PUT',
+            body: { data: JSON.parse(body) },
+            keepalive: options?.keepalive,
+          },
+        )
         const { updatedAt, tableCount, provider } = saved
         lastSaved = body
         sessionCache.set(currentId, { data: JSON.parse(body), updatedAt })
@@ -315,6 +338,11 @@ export const useAuth = create<AuthState>()((set, get) => {
 
     createDiagram: async () => {
       if (get().switching) return null
+      // Over the plan's limit: say so at once instead of asking the server (which would refuse too).
+      if (get().diagrams.length >= get().plan.maxDiagrams) {
+        showProblem(planLimitProblem(get().plan.maxDiagrams), 'warning')
+        return null
+      }
       set({ switching: true, loading: { kind: 'create' } })
       try {
         if (!(await flush())) return null
@@ -342,7 +370,10 @@ export const useAuth = create<AuthState>()((set, get) => {
         set((s) => ({ diagrams: s.diagrams.map((d) => (d.id === id ? { ...d, title: t } : d)) }))
       setTitle(next) // optimistic: the list updates at once and rolls back if the server says no
       try {
-        const { updatedAt } = await api<{ updatedAt: string }>(`/diagrams/${id}`, { method: 'PUT', body: { title: next } })
+        const { updatedAt } = await api<{ updatedAt: string }>(`/diagrams/${id}`, {
+          method: 'PUT',
+          body: { title: next },
+        })
         set((s) => ({ diagrams: s.diagrams.map((d) => (d.id === id ? { ...d, updatedAt } : d)) }))
       } catch (e) {
         setTitle(before.title)

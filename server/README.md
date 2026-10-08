@@ -1,6 +1,6 @@
 # server
 
-Express 5 + Prisma 7 API for erd-designer: accounts, sessions and several saved ERDs per user.
+Express 5 + Prisma 7 API for erd-designer: accounts, sessions and saved ERDs (the Free plan includes one per account; see below).
 
 ```bash
 cp .env.example .env          # set DATABASE_URL
@@ -21,7 +21,7 @@ npm run dev                   # http://127.0.0.1:3001 (watch mode)
 | POST | `/api/auth/logout` | 204, ends the session |
 | GET | `/api/auth/me` | `{ user }` or `{ user: null }` |
 | GET | `/api/diagrams` | the signed-in user's ERDs: `{ diagrams: [{ id, title, updatedAt }] }`, oldest first (no content) |
-| POST | `/api/diagrams` | `{ title?, data? }` → 201 `{ diagram }`; blank and "Untitled diagram" by default; max 50 per user (409 beyond) |
+| POST | `/api/diagrams` | `{ title?, data? }` → 201 `{ diagram }`; blank and "Untitled diagram" by default. Over the plan's limit → 403 `{ error, code: "plan_limit" }` (Free plan: 1 diagram, set by `FREE_PLAN_MAX_DIAGRAMS`); hard cap 50 per user (409) |
 | GET | `/api/diagrams/:id` | one ERD with its content: `{ diagram: { id, title, updatedAt, data } }` |
 | PUT | `/api/diagrams/:id` | `{ title?, data? }` (at least one): rename and/or save the validated workspace |
 | DELETE | `/api/diagrams/:id` | 204 |

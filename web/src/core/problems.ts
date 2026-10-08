@@ -58,3 +58,13 @@ export function removedProblem(i: RelationIssue): Problem {
 export function refusedProblem(i: RelationIssue): Problem {
   return { ...explainIssue(i), title: 'Relation not created' }
 }
+
+/** Shown when someone on the Free plan tries to create more diagrams than the plan includes. */
+export function planLimitProblem(maxDiagrams: number): Problem {
+  const what = maxDiagrams === 1 ? 'one diagram' : `${maxDiagrams} diagrams`
+  return {
+    title: 'Free plan limit reached',
+    reason: `You can only create ${what} on the Free plan.`,
+    fix: 'Please upgrade your plan to create more.',
+  }
+}

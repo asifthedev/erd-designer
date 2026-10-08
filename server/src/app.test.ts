@@ -1,6 +1,7 @@
 import request from 'supertest'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createApp } from './app'
+import { config } from './config'
 import { prisma } from './db'
 import { setMailer, type Mail } from './mail/mailer'
 
@@ -659,6 +660,69 @@ describe.skipIf(!hasDb)('API (integration, real PostgreSQL)', () => {
       const id = (await create(a, { title: 'Mine' })).body.diagram.id
       expect((await put(b, id, { pinned: true })).status).toBe(404)
       expect((await request(app).get('/api/diagrams').set('Cookie', a.cookie)).body.diagrams[0].pinned).toBe(false)
+    })
+
+    describe('Free plan limit', () => {
+      /** Runs `fn` with the Free plan allowing `max` diagrams, then puts the setting back. */
+      async function withLimit(max: number, fn: () => Promise<void>) {
+        const before = config.FREE_PLAN_MAX_DIAGRAMS
+        config.FREE_PLAN_MAX_DIAGRAMS = max
+        try {
+          await fn()
+        } finally {
+          config.FREE_PLAN_MAX_DIAGRAMS = before
+        }
+      }
+
+      it('allows one diagram, then asks the person to upgrade (nothing is created)', async () => {
+        await withLimit(1, async () => {
+          const u = await signUp()
+          expect((await create(u, { title: 'First' })).status).toBe(201)
+          const second = await create(u, { title: 'Second' })
+          expect(second.status).toBe(403)
+          expect(second.body).toEqual({
+            error: 'You can only create one diagram on the Free plan. Please upgrade your plan.',
+            code: 'plan_limit',
+          })
+          const list = (await request(app).get('/api/diagrams').set('Cookie', u.cookie)).body
+          expect(list.diagrams.map((d: { title: string }) => d.title)).toEqual(['First']) // the second was not made
+          expect(list.plan).toEqual({ name: 'free', maxDiagrams: 1 })
+        })
+      })
+
+      it('frees the place when the diagram is deleted, and counts each person on their own', async () => {
+        await withLimit(1, async () => {
+          const a = await signUp()
+          const b = await signUp()
+          const first = (await create(a, { title: 'A1' })).body.diagram.id
+          expect((await create(b, { title: 'B1' })).status).toBe(201) // b has not used a's place
+          expect((await create(a, { title: 'A2' })).status).toBe(403)
+          expect((await request(app).delete(`/api/diagrams/${first}`).set('Cookie', a.cookie)).status).toBe(204)
+          expect((await create(a, { title: 'A2' })).status).toBe(201)
+        })
+      })
+
+      it('keeps what an account already has (the limit only stops new ones), and still lets it be edited', async () => {
+        const u = await signUp()
+        await create(u, { title: 'One' })
+        await create(u, { title: 'Two' }) // made before the limit existed (the suite allows 50 here)
+        await withLimit(1, async () => {
+          expect((await create(u, { title: 'Three' })).status).toBe(403)
+          const list = (await request(app).get('/api/diagrams').set('Cookie', u.cookie)).body.diagrams
+          expect(list).toHaveLength(2)
+          expect((await put(u, list[1].id, { title: 'Two, renamed' })).status).toBe(200)
+        })
+      })
+
+      it('says how many when the plan allows more than one', async () => {
+        await withLimit(3, async () => {
+          const u = await signUp()
+          for (let i = 0; i < 3; i++) expect((await create(u)).status).toBe(201)
+          const over = await create(u)
+          expect(over.status).toBe(403)
+          expect(over.body.error).toBe('You can only create 3 diagrams on the Free plan. Please upgrade your plan.')
+        })
+      })
     })
 
     it('saves content, renames, or both; an empty update is rejected', async () => {

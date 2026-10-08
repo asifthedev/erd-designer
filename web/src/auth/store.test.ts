@@ -4,7 +4,14 @@ import { toWorkspace, useStore, type Workspace } from '../store'
 type Row = { id: string; title: string; data: Workspace; updatedAt: string }
 
 // An in-memory stand-in for the server, recording every call so tests can check ORDER (e.g. save before switch).
-const server = { rows: new Map<string, Row>(), calls: [] as string[], failNext: new Set<string>(), clock: 0, seq: 0 }
+const server = {
+  rows: new Map<string, Row>(),
+  calls: [] as string[],
+  failNext: new Set<string>(),
+  clock: 0,
+  seq: 0,
+  plan: { name: 'free', maxDiagrams: 50 },
+}
 const stamp = () => new Date(2026, 0, 1, 0, 0, ++server.clock).toISOString()
 
 vi.mock('./api', async (orig) => {
@@ -18,9 +25,12 @@ vi.mock('./api', async (orig) => {
       if (server.failNext.delete(key)) throw new real.ApiError('Server says no', 500)
 
       if (path === '/diagrams' && method === 'GET') {
-        return { diagrams: [...server.rows.values()].map(({ data: _d, ...meta }) => meta) }
+        return { diagrams: [...server.rows.values()].map(({ data: _d, ...meta }) => meta), plan: server.plan }
       }
       if (path === '/diagrams' && method === 'POST') {
+        if (server.rows.size >= server.plan.maxDiagrams) {
+          throw new real.ApiError('You can only create one diagram on the Free plan. Please upgrade your plan.', 403, undefined, undefined, 'plan_limit')
+        }
         const row: Row = {
           id: `d${++server.seq}`,
           title: options.body.title ?? 'Untitled diagram',
@@ -50,6 +60,10 @@ vi.mock('./api', async (orig) => {
   }
 })
 
+// What the person is shown at the plan's limit is checked by looking at what the store asks the toast helper to show.
+vi.mock('../components/problemToast', () => ({ showProblem: vi.fn(), showNote: vi.fn() }))
+const { showProblem } = await import('../components/problemToast')
+const { planLimitProblem } = await import('../core/problems')
 const { useAuth } = await import('./store')
 
 const user = { id: 'u1', email: 'a@b.co', name: null }
@@ -82,6 +96,8 @@ beforeEach(() => {
   server.failNext.clear()
   server.clock = 0
   server.seq = 0
+  server.plan = { name: 'free', maxDiagrams: 50 }
+  vi.mocked(showProblem).mockClear()
   useStore.getState().loadSample()
   useAuth.setState({ status: 'loading', user: null, ready: false, save: 'idle', diagrams: [], currentId: null, switching: false, loading: null })
 })
@@ -371,3 +387,45 @@ describe('multiple ERDs', () => {
 })
 
 const snapshotNames = () => toWorkspace(useStore.getState()).nodes.map((n) => n.data.name)
+
+describe('Free plan limit', () => {
+  it('uses the plan the server reports (and shows it in the store)', async () => {
+    server.plan = { name: 'free', maxDiagrams: 1 }
+    await signIn()
+    expect(useAuth.getState().plan).toEqual({ name: 'free', maxDiagrams: 1 })
+  })
+
+  it('at the limit, a second diagram is not asked for: the upgrade note is shown instead and nothing changes', async () => {
+    server.plan = { name: 'free', maxDiagrams: 1 }
+    await signIn() // the account gets its first diagram
+    const before = useAuth.getState()
+    server.calls = []
+
+    expect(await useAuth.getState().createDiagram()).toBeNull()
+    expect(showProblem).toHaveBeenCalledWith(planLimitProblem(1), 'warning')
+    expect(server.calls).toEqual([]) // no request, no spinner, no save
+    expect(useAuth.getState().diagrams).toEqual(before.diagrams)
+    expect(useAuth.getState().currentId).toBe(before.currentId)
+    expect(useAuth.getState().loading).toBeNull()
+  })
+
+  it('shows the same note when the server is the one that refuses (e.g. the plan changed in another tab)', async () => {
+    server.plan = { name: 'free', maxDiagrams: 1 }
+    await signIn()
+    useAuth.setState({ plan: { name: 'free', maxDiagrams: 5 } }) // this tab still believes the old, bigger limit
+    expect(await useAuth.getState().createDiagram()).toBeNull()
+    expect(server.calls).toContain('POST /diagrams') // it did ask ...
+    expect(showProblem).toHaveBeenCalledWith(planLimitProblem(5), 'warning') // ... and explained when told no
+    expect(useAuth.getState().diagrams).toHaveLength(1)
+    expect(useAuth.getState().loading).toBeNull() // and is not left spinning
+  })
+
+  it('still creates diagrams while there is room', async () => {
+    server.plan = { name: 'free', maxDiagrams: 2 }
+    await signIn()
+    expect(await useAuth.getState().createDiagram()).not.toBeNull()
+    expect(useAuth.getState().diagrams).toHaveLength(2)
+    expect(await useAuth.getState().createDiagram()).toBeNull() // the third is over the limit of 2
+    expect(showProblem).toHaveBeenLastCalledWith(planLimitProblem(2), 'warning')
+  })
+})

@@ -18,11 +18,11 @@ export function SettingsLink({ inSidebar = false }: { inSidebar?: boolean }) {
       }}
       className={
         inSidebar
-          ? 'grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg text-muted outline-none hover:bg-hover hover:text-ink focus-visible:ring-1 focus-visible:ring-key'
+          ? 'grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-muted outline-none hover:bg-hover hover:text-ink focus-visible:ring-1 focus-visible:ring-key'
           : 'grid size-8 cursor-pointer place-items-center rounded-md border border-line text-muted outline-none hover:border-key hover:text-key focus-visible:ring-1 focus-visible:ring-key'
       }
     >
-      <Settings size={16} />
+      <Settings size={inSidebar ? 15 : 16} />
     </a>
   )
 }

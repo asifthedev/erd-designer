@@ -9,11 +9,10 @@ import {
   Plus,
   Search,
   Trash2,
-  Workflow,
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { MAX_DIAGRAMS, useAuth, type DiagramMeta, type Loading } from '@/auth/store'
+import { useAuth, type DiagramMeta, type Loading } from '@/auth/store'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useCloseOnOutsidePointer } from '../hooks/useCloseOnOutsidePointer'
 import { initials, tableCountLabel, timeAgo } from '../lib/time'
@@ -51,7 +50,7 @@ function TitleInput({ initial, onDone }: { initial: string; onDone: (title: stri
       spellCheck={false}
       onKeyDown={onKeyDown}
       onBlur={(e) => finish(e.currentTarget.value)}
-      className="min-w-0 flex-1 rounded-md border border-key bg-canvas px-2 py-1.5 text-[14px] font-semibold outline-none"
+      className="min-w-0 flex-1 rounded-md border border-key bg-canvas px-2 py-1 text-[13px] font-semibold outline-none"
     />
   )
 }
@@ -70,9 +69,9 @@ function RowMenu({ diagram, onRename }: { diagram: DiagramMeta; onRename: () => 
           type="button"
           title="More"
           aria-label={`More for ${diagram.title}`}
-          className="grid size-7 cursor-pointer place-items-center rounded-md text-muted outline-none hover:bg-hover-strong hover:text-ink focus-visible:ring-1 focus-visible:ring-key"
+          className="grid size-6 cursor-pointer place-items-center rounded-md text-muted outline-none hover:bg-hover-strong hover:text-ink focus-visible:ring-1 focus-visible:ring-key"
         >
-          <Ellipsis size={16} />
+          <Ellipsis size={15} />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="font-ui w-40 p-1">
@@ -134,18 +133,18 @@ function Row({
   return (
     <li
       aria-busy={working || undefined}
-      className={`group relative flex items-center gap-3 rounded-xl border p-2 ${
+      className={`group relative flex items-center gap-2.5 rounded-lg border p-1.5 ${
         active || (working && loading?.kind === 'open')
           ? 'border-key/40 bg-key/12'
           : 'border-transparent hover:bg-hover'
       } ${loading ? 'pointer-events-none' : ''} ${loading && !working ? 'opacity-60' : ''}`}
     >
       <span
-        className={`grid size-9 shrink-0 place-items-center rounded-lg ${
+        className={`grid size-8 shrink-0 place-items-center rounded-md ${
           active ? 'bg-key text-primary-foreground' : 'bg-hover-strong text-muted'
         }`}
       >
-        {working ? <LoaderCircle size={16} className="animate-spin" aria-label="Working" /> : <Database size={16} />}
+        {working ? <LoaderCircle size={15} className="animate-spin" aria-label="Working" /> : <Database size={15} />}
       </span>
 
       {editing ? (
@@ -166,14 +165,14 @@ function Row({
             onDoubleClick={() => onEdit(true)}
             className="min-w-0 flex-1 cursor-pointer text-left outline-none focus-visible:ring-1 focus-visible:ring-key"
           >
-            <span className="block truncate text-[14px] font-semibold">{diagram.title}</span>
-            <span className="block truncate text-[12px] text-muted">{subtitle}</span>
+            <span className="block truncate text-[13px] leading-tight font-semibold">{diagram.title}</span>
+            <span className="block truncate text-[11.5px] leading-tight text-muted">{subtitle}</span>
           </button>
 
           {/* The database badge; the pin and "..." take its place while the row is hovered or focused. */}
           <span className="grid shrink-0 justify-items-end *:col-start-1 *:row-start-1">
             {provider && (
-              <span className="rounded-md border border-line px-1.5 py-0.5 font-mono text-[11px] text-muted group-focus-within:invisible group-hover:invisible">
+              <span className="rounded border border-line px-1 py-px font-mono text-[10.5px] text-muted group-focus-within:invisible group-hover:invisible">
                 {PROVIDER_LABEL[provider]}
               </span>
             )}
@@ -184,9 +183,9 @@ function Row({
                 aria-label={diagram.pinned ? `Unpin ${diagram.title}` : `Pin ${diagram.title}`}
                 aria-pressed={!!diagram.pinned}
                 onClick={() => void setPinned(diagram.id, !diagram.pinned)}
-                className="grid size-7 cursor-pointer place-items-center rounded-md text-muted outline-none hover:bg-hover-strong hover:text-ink focus-visible:ring-1 focus-visible:ring-key"
+                className="grid size-6 cursor-pointer place-items-center rounded-md text-muted outline-none hover:bg-hover-strong hover:text-ink focus-visible:ring-1 focus-visible:ring-key"
               >
-                {diagram.pinned ? <PinOff size={15} /> : <Pin size={15} />}
+                {diagram.pinned ? <PinOff size={14} /> : <Pin size={14} />}
               </button>
               <RowMenu diagram={diagram} onRename={() => onEdit(true)} />
             </span>
@@ -202,8 +201,8 @@ function ListSkeleton() {
   return (
     <ul className="flex flex-col gap-1.5" aria-label="Loading your diagrams" aria-busy="true">
       {[0, 1, 2].map((i) => (
-        <li key={i} className="flex items-center gap-3 p-2">
-          <span className="size-9 animate-pulse rounded-lg bg-hover" />
+        <li key={i} className="flex items-center gap-2.5 p-1.5">
+          <span className="size-8 animate-pulse rounded-md bg-hover" />
           <span className="flex flex-1 flex-col gap-2">
             <span className="h-3 w-3/5 animate-pulse rounded bg-hover" />
             <span className="h-2.5 w-4/5 animate-pulse rounded bg-hover" />
@@ -214,7 +213,7 @@ function ListSkeleton() {
   )
 }
 
-const sectionTitle = 'px-2 pt-3 pb-1.5 text-[11px] font-semibold tracking-wider text-muted uppercase'
+const sectionTitle = 'px-1.5 pt-2.5 pb-1 text-[10.5px] font-semibold tracking-wider text-muted uppercase'
 const byRecent = (a: DiagramMeta, b: DiagramMeta) => b.updatedAt.localeCompare(a.updatedAt)
 
 /** True when the key press is going into a text field, where letters must stay letters. */
@@ -236,6 +235,7 @@ export function DiagramSidebar() {
   const currentId = useAuth((s) => s.currentId)
   const loading = useAuth((s) => s.loading)
   const user = useAuth((s) => s.user)
+  const plan = useAuth((s) => s.plan)
   const createDiagram = useAuth((s) => s.createDiagram)
   const toggleList = useStore((s) => s.toggleList)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -249,7 +249,8 @@ export function DiagramSidebar() {
     return () => clearInterval(timer)
   }, [])
 
-  const full = diagrams.length >= MAX_DIAGRAMS
+  // At the plan's limit the button still works: pressing it explains the limit (see createDiagram in the auth store).
+  const atLimit = diagrams.length >= plan.maxDiagrams
   const creating = loading?.kind === 'create'
 
   const create = async () => {
@@ -259,7 +260,7 @@ export function DiagramSidebar() {
   // The shortcuts below are registered once, so they reach the latest `create` through a ref.
   const createRef = useRef(create)
   createRef.current = create
-  const canCreate = !loading && !full
+  const canCreate = !loading
 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -286,7 +287,7 @@ export function DiagramSidebar() {
   const label = user?.name || user?.email || ''
   const accountName = user?.name || (user?.email ?? '').split('@')[0]
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
-  const kbd = 'rounded-md bg-hover-strong px-1.5 py-0.5 font-mono text-[11px] text-muted'
+  const kbd = 'rounded bg-hover-strong px-1.5 py-px font-mono text-[10.5px] text-muted'
 
   const rows = (list: DiagramMeta[]) => (
     <ul className="flex flex-col gap-1">
@@ -305,42 +306,34 @@ export function DiagramSidebar() {
   )
 
   return (
-    <aside aria-label="Your diagrams" className="flex w-80 shrink-0 flex-col border-r border-line bg-surface">
-      <header className="flex items-center gap-3 px-4 pt-4 pb-3">
-        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-key text-primary-foreground">
-          <Workflow size={20} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="truncate font-semibold">erd.designer</div>
-          <div className="truncate text-[12.5px] text-muted">Personal workspace</div>
+    <aside aria-label="Your diagrams" className="flex w-72 shrink-0 flex-col border-r border-line bg-surface">
+      <div className="flex flex-col gap-2 px-3 pt-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={!canCreate}
+            aria-busy={creating || undefined}
+            onClick={() => void create()}
+            title="Create a new, blank diagram (N)"
+            className="flex h-9 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg bg-primary px-3 text-[13px] font-medium text-primary-foreground outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ink disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {creating ? <LoaderCircle size={15} className="animate-spin" aria-hidden /> : <Plus size={15} />}
+            {creating ? 'Creating…' : 'New diagram'}
+            <kbd className="ml-auto rounded bg-black/20 px-1.5 py-px font-mono text-[10.5px]">N</kbd>
+          </button>
+          <button
+            type="button"
+            onClick={toggleList}
+            title="Hide the list"
+            aria-label="Hide the list of diagrams"
+            className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-lg text-muted hover:bg-hover hover:text-ink"
+          >
+            <PanelLeftClose size={16} />
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={toggleList}
-          title="Hide the list"
-          aria-label="Hide the list of diagrams"
-          className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg text-muted hover:bg-hover hover:text-ink"
-        >
-          <PanelLeftClose size={17} />
-        </button>
-      </header>
 
-      <div className="flex flex-col gap-3 px-3">
-        <button
-          type="button"
-          disabled={!canCreate}
-          aria-busy={creating || undefined}
-          onClick={() => void create()}
-          title={full ? `You can keep up to ${MAX_DIAGRAMS} diagrams` : 'Create a new, blank diagram (N)'}
-          className="flex h-11 w-full cursor-pointer items-center gap-2 rounded-xl bg-primary px-4 font-medium text-primary-foreground outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ink disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {creating ? <LoaderCircle size={18} className="animate-spin" aria-hidden /> : <Plus size={18} />}
-          {creating ? 'Creating…' : 'New diagram'}
-          <kbd className="ml-auto rounded-md bg-black/20 px-1.5 py-0.5 font-mono text-[11px]">N</kbd>
-        </button>
-
-        <label className="flex h-10 items-center gap-2 rounded-xl border border-line bg-canvas px-3 text-muted focus-within:border-key">
-          <Search size={16} className="shrink-0" aria-hidden />
+        <label className="flex h-9 items-center gap-2 rounded-lg border border-line bg-canvas px-2.5 text-muted focus-within:border-key">
+          <Search size={14} className="shrink-0" aria-hidden />
           <input
             ref={search}
             type="text"
@@ -355,7 +348,7 @@ export function DiagramSidebar() {
                 e.currentTarget.blur()
               }
             }}
-            className="min-w-0 flex-1 bg-transparent text-[14px] text-ink outline-none placeholder:text-muted"
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-muted"
           />
           {query ? (
             <button
@@ -364,7 +357,7 @@ export function DiagramSidebar() {
               onClick={() => setQuery('')}
               className="grid size-5 cursor-pointer place-items-center rounded text-muted hover:text-ink"
             >
-              <X size={14} />
+              <X size={13} />
             </button>
           ) : (
             <kbd className={kbd}>{isMac ? '⌘K' : 'Ctrl K'}</kbd>
@@ -374,11 +367,11 @@ export function DiagramSidebar() {
 
       <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
         {diagrams.length === 0 ? (
-          <div className="pt-4">
+          <div className="pt-3">
             <ListSkeleton />
           </div>
         ) : pinned.length === 0 && recent.length === 0 ? (
-          <p className="px-2 pt-6 text-center text-[13.5px] text-muted">No diagrams match “{query.trim()}”.</p>
+          <p className="px-2 pt-5 text-center text-[13px] text-muted">No diagrams match “{query.trim()}”.</p>
         ) : (
           <>
             {pinned.length > 0 && (
@@ -397,39 +390,41 @@ export function DiagramSidebar() {
         )}
       </nav>
 
-      <footer className="flex flex-col gap-4 border-t border-line p-4">
+      <footer className="flex flex-col gap-3 border-t border-line p-3">
         <div>
-          <div className="flex items-center justify-between text-[13px]">
-            <span className="text-muted">Diagrams</span>
-            <span className="font-mono font-medium">
-              {diagrams.length} / {MAX_DIAGRAMS}
+          <div className="flex items-center justify-between text-[12px]">
+            <span className="text-muted">
+              Diagrams <span className="capitalize">· {plan.name} plan</span>
+            </span>
+            <span className={`font-mono font-medium ${atLimit ? 'text-warning' : ''}`}>
+              {diagrams.length} / {plan.maxDiagrams}
             </span>
           </div>
           <div
             role="progressbar"
             aria-label="Diagrams used"
             aria-valuemin={0}
-            aria-valuemax={MAX_DIAGRAMS}
+            aria-valuemax={plan.maxDiagrams}
             aria-valuenow={diagrams.length}
-            className="mt-2 h-1.5 overflow-hidden rounded-full bg-hover-strong"
+            className="mt-1.5 h-1 overflow-hidden rounded-full bg-hover-strong"
           >
             <div
-              className={`h-full rounded-full ${full ? 'bg-danger' : 'bg-key'}`}
-              style={{ width: `${Math.min(100, (diagrams.length / MAX_DIAGRAMS) * 100)}%` }}
+              className={`h-full rounded-full ${atLimit ? 'bg-warning' : 'bg-key'}`}
+              style={{ width: `${Math.min(100, (diagrams.length / plan.maxDiagrams) * 100)}%` }}
             />
           </div>
         </div>
         {user && (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <span
               aria-hidden
-              className="grid size-10 shrink-0 place-items-center rounded-full bg-key/20 text-[14px] font-semibold text-key"
+              className="grid size-7 shrink-0 place-items-center rounded-full bg-key/20 text-[11px] font-semibold text-key"
             >
               {initials(label)}
             </span>
-            <div className="min-w-0 flex-1">
-              <div className="truncate font-semibold">{accountName}</div>
-              <div className="truncate text-[12.5px] text-muted">{user.email}</div>
+            <div className="min-w-0 flex-1 leading-tight">
+              <div className="truncate text-[12.5px] font-semibold">{accountName}</div>
+              <div className="truncate text-[11px] text-muted">{user.email}</div>
             </div>
             <SettingsLink inSidebar />
           </div>

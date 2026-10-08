@@ -47,8 +47,8 @@ const FEATURES: Feature[] = [
   {
     id: 'erds',
     label: 'Projects',
-    title: 'Every ERD in one place.',
-    text: 'Keep many diagrams in your account. Changes save themselves, and every ERD opens where you left it.',
+    title: 'Saved to your account.',
+    text: 'Changes save themselves, and your diagram opens where you left it, on any device.',
     image: '/landing/erds.webp',
     size: [1920, 1280],
     alt: 'The list of saved ERDs next to the canvas',

@@ -1,8 +1,8 @@
 # erd-designer
 
 A visual database designer. Drag tables onto a canvas, draw relations, and get a **Prisma schema**, a **Drizzle ORM
-schema** and **SQL** (PostgreSQL / MySQL / SQLite) generated live. Sign in to keep **several ERDs** in your account (listed in a collapsible
-left sidebar) and open them on any device.
+schema** and **SQL** (PostgreSQL / MySQL / SQLite) generated live. Sign in to keep your ERD in your account and open it on any device. The **Free plan includes one diagram**; creating a
+second one asks you to upgrade your plan. Your diagrams are listed in a collapsible left sidebar.
 
 ## Settings
 

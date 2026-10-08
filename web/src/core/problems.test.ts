@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Column, Diagram, Provider } from './model'
-import { explainIssue, refusedProblem, removedProblem } from './problems'
+import { explainIssue, planLimitProblem, refusedProblem, removedProblem } from './problems'
 import { checkRelations } from './relations'
 
 const col = (id: string, name: string, type: string, extra: Partial<Column> = {}): Column => ({
@@ -101,5 +101,19 @@ describe('friendly relation messages', () => {
     expect(removedProblem(i).reason).toBe(explainIssue(i).reason)
     expect(removedProblem(i).fix).toContain('draw the relation again')
     expect(refusedProblem(i).title).toBe('Relation not created')
+  })
+})
+
+describe('free plan limit message', () => {
+  it('tells the person what the limit is and what to do, in the three-part shape every message has', () => {
+    expect(planLimitProblem(1)).toEqual({
+      title: 'Free plan limit reached',
+      reason: 'You can only create one diagram on the Free plan.',
+      fix: 'Please upgrade your plan to create more.',
+    })
+  })
+
+  it('says the number when the plan allows more than one', () => {
+    expect(planLimitProblem(3).reason).toBe('You can only create 3 diagrams on the Free plan.')
   })
 })

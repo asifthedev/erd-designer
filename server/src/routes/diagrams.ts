@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '../db'
 import { requireAuth } from '../middleware/auth'
 import { BLANK_DIAGRAM, createDiagramSchema, MAX_DIAGRAMS_PER_USER, updateDiagramSchema } from '../schemas'
+import { planLimitMessage, planOf } from '../plans'
 import { createLimiter, saveLimiter } from '../security/limiters'
 
 export const diagramsRouter = Router()
@@ -34,14 +35,21 @@ diagramsRouter.get('/', async (req, res) => {
     FROM erd_diagrams
     WHERE user_id = ${req.user!.id}
     ORDER BY created_at ASC`
-  res.json({ diagrams })
+  res.json({ diagrams, plan: planOf(req.user!) })
 })
 
 diagramsRouter.post('/', createLimiter, express.json({ limit: '2mb' }), async (req, res) => {
   const input = createDiagramSchema.parse(req.body)
   const userId = req.user!.id
-  if ((await prisma.diagram.count({ where: { userId } })) >= MAX_DIAGRAMS_PER_USER) {
+  const owned = await prisma.diagram.count({ where: { userId } })
+  if (owned >= MAX_DIAGRAMS_PER_USER) {
     res.status(409).json({ error: `You can keep up to ${MAX_DIAGRAMS_PER_USER} diagrams. Delete one to add another.` })
+    return
+  }
+  // The plan's own limit (lower than the cap above on the Free plan). `code` lets the web app show its upgrade note.
+  const plan = planOf(req.user!)
+  if (owned >= plan.maxDiagrams) {
+    res.status(403).json({ error: planLimitMessage(plan), code: 'plan_limit' })
     return
   }
   const diagram = await prisma.diagram.create({

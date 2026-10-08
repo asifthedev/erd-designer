@@ -20,6 +20,11 @@ const schema = z.object({
   SMTP_URL: z.string().optional(),
   /** The From: header, e.g. "erd.designer <no-reply@example.com>". Required together with SMTP_URL. */
   MAIL_FROM: z.string().optional(),
+  /**
+   * How many diagrams an account on the Free plan may have. Every account is on the Free plan for now; a paid plan
+   * would get its own number in src/plans.ts. (MAX_DIAGRAMS_PER_USER in schemas.ts is the hard cap for every plan.)
+   */
+  FREE_PLAN_MAX_DIAGRAMS: z.coerce.number().int().min(1).default(1),
   /** Requests for a code always take at least this long, so answers can't reveal whether an address has an account. */
   CODE_REQUEST_MIN_MS: z.coerce.number().int().min(0).default(900),
 })
