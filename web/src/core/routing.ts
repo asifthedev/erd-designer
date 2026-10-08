@@ -5,7 +5,7 @@
  *    that overlap in x (or sit too close) are joined by a bracket on one shared side, outside both.
  * Moving a table re-derives all of this, so lines re-route themselves.
  */
-import type { Point } from './model'
+import type { Bend } from './model'
 
 /** Straight run out of each table, long enough to hold the cardinality glyph. */
 export const STUB = 48
@@ -49,7 +49,7 @@ export function stubLength(sx: number, sDir: Dir, tx: number, tDir: Dir): number
  * Lines between the same two columns would otherwise share one lane and read as a single line, so each gets a small
  * offset derived from its target row (stable across renders, different per relation).
  */
-export function routeX(sx: number, sDir: Dir, tx: number, ty: number, tDir: Dir, bend?: Point): number {
+export function routeX(sx: number, sDir: Dir, tx: number, ty: number, tDir: Dir, bend?: Bend): number {
   const stub = stubLength(sx, sDir, tx, tDir)
   const ax = sx + sDir * stub
   const bx = tx + tDir * stub
@@ -60,6 +60,66 @@ export function routeX(sx: number, sDir: Dir, tx: number, ty: number, tDir: Dir,
   return auto + (bend?.x ?? 0)
 }
 
+export type Pt = [number, number]
+
+/**
+ * The route in its three movable parts, so each can be grabbed on its own:
+ *  - source: out of the source table (the stub), then the horizontal run towards the lane
+ *  - lane:   the vertical segment, which moves left / right (bend.x)
+ *  - target: the horizontal run from the lane, then into the target table
+ * A run moves up / down (bend.ys, bend.yt); the stub stays level with its column, so the line always starts and ends
+ * exactly on the column, and a small vertical step joins the stub to a moved run. Consecutive parts share a point.
+ */
+export function routeParts(
+  sx: number,
+  sy: number,
+  sDir: Dir,
+  tx: number,
+  ty: number,
+  tDir: Dir,
+  bend?: Bend,
+): { source: Pt[]; lane: Pt[]; target: Pt[] } {
+  const stub = stubLength(sx, sDir, tx, tDir)
+  const ax = sx + sDir * stub // end of the source stub
+  const bx = tx + tDir * stub // end of the target stub
+  const lane = routeX(sx, sDir, tx, ty, tDir, bend)
+  const y1 = sy + (bend?.ys ?? 0)
+  const y2 = ty + (bend?.yt ?? 0)
+  return {
+    source: [
+      [sx, sy],
+      [ax, sy],
+      [ax, y1],
+      [lane, y1],
+    ],
+    lane: [
+      [lane, y1],
+      [lane, y2],
+    ],
+    target: [
+      [lane, y2],
+      [bx, y2],
+      [bx, ty],
+      [tx, ty],
+    ],
+  }
+}
+
+/** Drops repeated points and points in the middle of a straight run, so a route has only its real corners. */
+export function simplify(points: Pt[]): Pt[] {
+  const out: Pt[] = []
+  for (const p of points) {
+    const last = out[out.length - 1]
+    if (last && last[0] === p[0] && last[1] === p[1]) continue
+    out.push(p)
+  }
+  return out.filter((p, i) => {
+    if (i === 0 || i === out.length - 1) return true
+    const [a, b] = [out[i - 1], out[i + 1]]
+    return !((a[0] === p[0] && p[0] === b[0]) || (a[1] === p[1] && p[1] === b[1]))
+  })
+}
+
 /** The corners of the route from the source border point to the target border point. */
 export function routePoints(
   sx: number,
@@ -68,13 +128,8 @@ export function routePoints(
   tx: number,
   ty: number,
   tDir: Dir,
-  bend?: Point,
-): [number, number][] {
-  const x = routeX(sx, sDir, tx, ty, tDir, bend)
-  return [
-    [sx, sy],
-    [x, sy],
-    [x, ty],
-    [tx, ty],
-  ]
+  bend?: Bend,
+): Pt[] {
+  const { source, lane, target } = routeParts(sx, sy, sDir, tx, ty, tDir, bend)
+  return simplify([...source, ...lane.slice(1), ...target.slice(1)])
 }

@@ -15,13 +15,22 @@ export const REFERENTIAL_ACTIONS: ReferentialAction[] = [
 /** A point / offset on the canvas, in flow coordinates. */
 export type Point = { x: number; y: number }
 
+/**
+ * Hand-dragged shape of a relation line, as offsets from its default route:
+ *  - x:  the vertical lane moved sideways
+ *  - ys: the horizontal run on the source side moved up (negative) or down
+ *  - yt: the horizontal run on the target side moved up or down
+ * (`y` is not used by the route any more; it is kept so lines saved earlier still load.)
+ */
+export type Bend = Point & { ys?: number; yt?: number }
+
 export type Reference = {
   tableId: string
   columnId: string
   onDelete?: ReferentialAction
   onUpdate?: ReferentialAction
-  /** User-dragged shape of the relation line: how far its middle was moved from the default route. */
-  bend?: Point
+  /** User-dragged shape of the relation line (see Bend). */
+  bend?: Bend
 }
 
 export type Column = {
@@ -56,7 +65,7 @@ export type ManyToMany = {
   /** Table at the drag target. */
   bTableId: string
   /** User-dragged shape of the line (see Reference.bend). */
-  bend?: Point
+  bend?: Bend
 }
 
 export type Diagram = {

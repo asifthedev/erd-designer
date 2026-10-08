@@ -78,6 +78,15 @@ describe('diagramSchema', () => {
     expect(r.manyToMany[0].bend).toEqual({ x: 5, y: 6 })
   })
 
+  it('keeps the up/down offsets of the two horizontal runs of a line', () => {
+    const r = diagramSchema.parse({
+      provider: 'postgresql',
+      nodes: [],
+      manyToMany: [{ id: 'm', aTableId: 'a', bTableId: 'b', bend: { x: 0, y: 0, ys: -30, yt: 45 } }],
+    })
+    expect(r.manyToMany[0].bend).toEqual({ x: 0, y: 0, ys: -30, yt: 45 })
+  })
+
   it('rejects unknown databases, missing fields and non-numeric positions', () => {
     expect(diagramSchema.safeParse({ provider: 'oracle', nodes: [], manyToMany: [] }).success).toBe(false)
     expect(

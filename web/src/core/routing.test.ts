@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { routePoints, routeX, sidesForRects, STUB, stubLength, TURN, type Dir } from './routing'
+import { routeParts, routePoints, routeX, sidesForRects, simplify, STUB, stubLength, TURN, type Dir } from './routing'
 
 type Box = { left: number; right: number; top: number; bottom: number }
 
@@ -108,5 +108,91 @@ describe('routePoints', () => {
     const pts = routePoints(680, 100, 1, 380, 500, 1, { x: -200, y: 0 })
     expect(pts.map((p) => p[0])).toEqual([680, 680 + STUB + TURN - 200, 680 + STUB + TURN - 200, 380])
     for (let k = 0; k + 1 < pts.length; k++) expect(pts[k][0] === pts[k + 1][0] || pts[k][1] === pts[k + 1][1]).toBe(true)
+  })
+})
+
+describe('moving the parts of a line', () => {
+  // Source table ends at x=680 (line leaves right), target starts at x=1000 (line arrives from the left).
+  const args = [680, 100, 1, 1000, 500, -1] as const
+  const lane = routeX(680, 1, 1000, 500, -1)
+
+  it('ys moves the source-side run up / down and nothing else', () => {
+    const pts = routePoints(...args, { x: 0, y: 0, ys: -40 })
+    expect(pts).toEqual([
+      [680, 100],
+      [680 + STUB, 100],
+      [680 + STUB, 60],
+      [lane, 60],
+      [lane, 500],
+      [1000, 500],
+    ])
+  })
+
+  it('yt moves the target-side run up / down and nothing else', () => {
+    const pts = routePoints(...args, { x: 0, y: 0, yt: 30 })
+    expect(pts).toEqual([
+      [680, 100],
+      [lane, 100],
+      [lane, 530],
+      [1000 - STUB, 530],
+      [1000 - STUB, 500],
+      [1000, 500],
+    ])
+  })
+
+  it('x still moves the lane sideways', () => {
+    expect(routeX(680, 1, 1000, 500, -1, { x: 25, y: 0, ys: 10 })).toBe(lane + 25)
+  })
+
+  it('a line always starts and ends exactly on its columns, however it is moved', () => {
+    for (const bend of [{ x: 90, y: 0, ys: -200, yt: 300 }, { x: -400, y: 0, ys: 80, yt: -80 }, { x: 0, y: 0 }]) {
+      const pts = routePoints(...args, bend)
+      expect(pts[0]).toEqual([680, 100])
+      expect(pts[pts.length - 1]).toEqual([1000, 500])
+    }
+  })
+
+  it('every piece stays horizontal or vertical (orthogonal lines)', () => {
+    for (const bend of [undefined, { x: 60, y: 0, ys: -75, yt: 40 }, { x: -300, y: 0, ys: 200, yt: -150 }]) {
+      for (const dirs of [[1, -1], [1, 1], [-1, -1]] as const) {
+        const pts = routePoints(500, 100, dirs[0], 900, 420, dirs[1], bend)
+        for (let i = 1; i < pts.length; i++) {
+          const same = pts[i][0] === pts[i - 1][0] || pts[i][1] === pts[i - 1][1]
+          expect(same, JSON.stringify({ bend, dirs, pts })).toBe(true)
+        }
+      }
+    }
+  })
+
+  it('the three parts join end to end and the lane is where routeX says', () => {
+    const { source, lane: laneSeg, target } = routeParts(...args, { x: 10, y: 0, ys: -20, yt: 15 })
+    expect(source[source.length - 1]).toEqual(laneSeg[0])
+    expect(laneSeg[laneSeg.length - 1]).toEqual(target[0])
+    expect(laneSeg[0][0]).toBe(lane + 10)
+    expect(laneSeg[0][0]).toBe(laneSeg[1][0]) // the lane is vertical
+  })
+
+  it('ignores the old, unused bend.y of lines saved earlier', () => {
+    expect(routePoints(...args, { x: 0, y: 99 })).toEqual(routePoints(...args))
+    expect(routePoints(...args, { x: 20, y: -300 })).toEqual(routePoints(...args, { x: 20, y: 0 }))
+  })
+
+  it('simplify keeps only the real corners', () => {
+    expect(
+      simplify([
+        [0, 0],
+        [0, 0],
+        [5, 0],
+        [10, 0],
+        [10, 7],
+        [10, 9],
+        [20, 9],
+      ]),
+    ).toEqual([
+      [0, 0],
+      [10, 0],
+      [10, 9],
+      [20, 9],
+    ])
   })
 })

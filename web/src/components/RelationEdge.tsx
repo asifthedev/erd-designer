@@ -8,8 +8,8 @@ import {
 } from '@xyflow/react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useState, type PointerEvent as ReactPointerEvent } from 'react'
-import type { Point } from '../core/model'
-import { routePoints, routeX, type Dir } from '../core/routing'
+import type { Bend } from '../core/model'
+import { routeParts, routePoints, type Dir, type Pt } from '../core/routing'
 import { useStore } from '../store'
 
 export type RelationKind = 'one-to-many' | 'one-to-one' | 'many-to-many'
@@ -31,10 +31,19 @@ const CORNER = 10 // radius of the rounded corners
 
 const dirOf = (p: Position): Dir => (p === Position.Right ? 1 : -1)
 
-/** Where the line passes halfway (the flip button sits here): on the vertical lane, midway between the two ends. */
-function midpoint(sx: number, sy: number, sPos: Position, tx: number, ty: number, tPos: Position, bend?: Point) {
-  return { x: routeX(sx, dirOf(sPos), tx, ty, dirOf(tPos), bend), y: (sy + ty) / 2 }
+/** Where the flip button sits: the middle of the vertical lane. */
+function midpoint(sx: number, sy: number, sPos: Position, tx: number, ty: number, tPos: Position, bend?: Bend) {
+  const [top, bottom] = routeParts(sx, sy, dirOf(sPos), tx, ty, dirOf(tPos), bend).lane
+  return { x: top[0], y: (top[1] + bottom[1]) / 2 }
 }
+
+/** Straight-edged `M x,y L x,y ...` path of a part of the route (used for the invisible grab areas). */
+const polyline = (pts: Pt[]) => pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x},${y}`).join('')
+
+/** Which part of the line is being dragged, and so which way it can move. */
+type Part = 'source' | 'lane' | 'target'
+/** Double-headed arrows: ↔ for the vertical lane, ↕ for the two horizontal runs. */
+const CURSOR: Record<Part, string> = { source: 'ns-resize', lane: 'ew-resize', target: 'ns-resize' }
 
 /** Polyline through `pts` with each corner rounded by up to `radius` (less on short segments). */
 function roundedPolyline(pts: [number, number][], radius: number): string {
@@ -68,7 +77,7 @@ function relationPath(
   tx: number,
   ty: number,
   tPos: Position,
-  bend?: Point,
+  bend?: Bend,
 ): string {
   return roundedPolyline(routePoints(sx, sy, dirOf(sPos), tx, ty, dirOf(tPos), bend), CORNER)
 }
@@ -103,11 +112,11 @@ export function RelationEdge(props: EdgeProps) {
   const setRelationBend = useStore((s) => s.setRelationBend)
   const selectEdge = useStore((s) => s.selectEdge)
   const { screenToFlowPosition } = useReactFlow()
-  const { kind = 'one-to-many', bend: savedBend, hot = false } = (data ?? {}) as { kind?: RelationKind; bend?: Point; hot?: boolean }
+  const { kind = 'one-to-many', bend: savedBend, hot = false } = (data ?? {}) as { kind?: RelationKind; bend?: Bend; hot?: boolean }
   // Lit = selected, or touching the table the pointer is over: green line, glowing current.
   const lit = selected || hot
   // While dragging, the shape lives here; it is saved once, when the pointer is released.
-  const [liveBend, setLiveBend] = useState<Point | null>(null)
+  const [liveBend, setLiveBend] = useState<Bend | null>(null)
   const bend = liveBend ?? savedBend
   const path = relationPath(sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, bend)
   const [src, dst] = ENDS[kind]
@@ -124,19 +133,30 @@ export function RelationEdge(props: EdgeProps) {
     bend,
   )
 
-  /** Drag anywhere on the line to move its middle (so it can be routed around other lines or tables). */
-  const startDrag = (e: ReactPointerEvent) => {
+  /**
+   * Drag any part of the line. The vertical lane moves left / right, a horizontal run moves up / down; together
+   * they let the line be placed anywhere (around other lines or tables). The cursor shows which way it can go.
+   */
+  const startDrag = (part: Part) => (e: ReactPointerEvent) => {
     if (e.button !== 0) return
     e.stopPropagation()
     e.preventDefault()
-    // Dragging across the canvas must not select the text of the tables underneath.
+    // Dragging across the canvas must not select the text of the tables underneath, and the arrow must not flicker.
     document.body.style.userSelect = 'none'
+    document.body.style.cursor = CURSOR[part]
     const origin = screenToFlowPosition({ x: e.clientX, y: e.clientY })
-    const base = savedBend ?? { x: 0, y: 0 }
-    let result: Point | null = null
-    const bendAt = (ev: PointerEvent): Point => {
+    const base: Bend = savedBend ?? { x: 0, y: 0 }
+    let result: Bend | null = null
+    const bendAt = (ev: PointerEvent): Bend => {
       const p = screenToFlowPosition({ x: ev.clientX, y: ev.clientY })
-      return { x: Math.round(base.x + p.x - origin.x), y: Math.round(base.y + p.y - origin.y) }
+      const dx = p.x - origin.x
+      const dy = p.y - origin.y
+      return {
+        x: Math.round(base.x + (part === 'lane' ? dx : 0)),
+        y: base.y,
+        ys: Math.round((base.ys ?? 0) + (part === 'source' ? dy : 0)),
+        yt: Math.round((base.yt ?? 0) + (part === 'target' ? dy : 0)),
+      }
     }
     const move = (ev: PointerEvent) => {
       // A few pixels of wobble is still a click, not a drag.
@@ -148,6 +168,7 @@ export function RelationEdge(props: EdgeProps) {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       document.body.style.userSelect = ''
+      document.body.style.cursor = ''
       if (result) {
         // After a drag the pointer is released over empty canvas, so the browser's follow-up `click` lands on the
         // pane and would deselect the relation (closing its panel). Swallow that one click.
@@ -163,6 +184,7 @@ export function RelationEdge(props: EdgeProps) {
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
   }
+  const parts = routeParts(sourceX, sourceY, dirOf(sourcePosition), targetX, targetY, dirOf(targetPosition), bend)
   // Flipping swaps which table is the parent; meaningless for many-to-many links and self-references.
   const canFlip = kind !== 'many-to-many' && source !== target
   const [tableId, columnId] = id.split(':')
@@ -175,16 +197,20 @@ export function RelationEdge(props: EdgeProps) {
         style={{ stroke, strokeWidth: width, strokeDasharray: kind === 'many-to-many' ? '6 4' : undefined }}
         interactionWidth={20}
       />
-      {/* Wide invisible hit area on top of the line: dragging it reshapes the route. */}
-      <path
-        d={path}
-        fill="none"
-        stroke="transparent"
-        strokeWidth={22}
-        pointerEvents="stroke"
-        className="nodrag nopan cursor-grab active:cursor-grabbing"
-        onPointerDown={startDrag}
-      />
+      {/* Wide invisible grab areas on top of the line, one per part (the lane last, so it wins at the corners). */}
+      {(['source', 'target', 'lane'] as const).map((part) => (
+        <path
+          key={part}
+          d={polyline(parts[part])}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={22}
+          pointerEvents="stroke"
+          style={{ cursor: CURSOR[part] }}
+          className="nodrag nopan"
+          onPointerDown={startDrag(part)}
+        />
+      ))}
       {/* Glowing "current" running along the line; shown by CSS on hover, and always while lit (selected, or touching the hovered table). */}
       {(['relation-flow-halo-wide', 'relation-flow-halo', 'relation-flow'] as const).map((cls) => (
         <path key={cls} d={path} className={`${cls} ${lit ? 'is-selected' : ''}`} />

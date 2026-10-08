@@ -10,7 +10,7 @@ import {
   type Column,
   type Diagram,
   type ManyToMany,
-  type Point,
+  type Bend,
   type Provider,
   type Reference,
   type Table,
@@ -107,7 +107,7 @@ type State = {
   updateReference: (tableId: string, columnId: string, patch: Partial<Reference>) => void
   removeReference: (tableId: string, columnId: string) => void
   /** Save (or, with undefined, reset) the dragged shape of a relation line. `edgeId` is the id of the edge. */
-  setRelationBend: (edgeId: string, bend: Point | undefined) => void
+  setRelationBend: (edgeId: string, bend: Bend | undefined) => void
   /** Add a foreign key to the table's own primary key (a tree / parent-child relation). */
   addSelfReference: (tableId: string) => void
   /**
@@ -500,7 +500,8 @@ export const useStore = create<State>()(
 
       setRelationBend: (edgeId, bend) => {
         // A bend that is back at the default route is stored as "no bend".
-        const value = bend && (Math.abs(bend.x) >= 1 || Math.abs(bend.y) >= 1) ? bend : undefined
+        const moved = (n: number | undefined) => Math.abs(n ?? 0) >= 1
+        const value = bend && (moved(bend.x) || moved(bend.ys) || moved(bend.yt)) ? bend : undefined
         if (edgeId.startsWith(M2M_PREFIX)) {
           const id = edgeId.slice(M2M_PREFIX.length)
           set((s) => ({ manyToMany: s.manyToMany.map((l) => (l.id === id ? { ...l, bend: value } : l)) }))
