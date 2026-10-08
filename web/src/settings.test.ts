@@ -108,3 +108,14 @@ describe('sanitize', () => {
     expect(sanitize({ theme: 'gruvbox', tableWeight: 500 })).toEqual({ ...DEFAULT_SETTINGS, tableWeight: 500 })
   })
 })
+
+describe('Vercel theme data types', () => {
+  it('are pink and stay readable on the table rows', () => {
+    const pink = /\[data-theme='vercel'\] \.erd-table \.erd-type\s*\{\s*color:\s*(#[0-9a-f]{6})/i.exec(css)?.[1]
+    expect(pink).toBeDefined()
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(pink!.slice(i, i + 2), 16))
+    expect(r).toBeGreaterThan(g) // pink: red-dominant with a strong blue part
+    expect(b).toBeGreaterThan(g)
+    expect(contrast(pink!, themeTokens('vercel')['--color-row'])).toBeGreaterThanOrEqual(4.5)
+  })
+})

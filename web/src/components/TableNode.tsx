@@ -40,7 +40,7 @@ const FLAGS: { key: FlagKey; label: string; title: string }[] = [
 ]
 
 /** A single column row. Reads only the store slices it needs, so unrelated edits do not re-render it. */
-function ColumnRow({ tableId, column }: { tableId: string; column: Column }) {
+function ColumnRow({ tableId, column, last }: { tableId: string; column: Column; last: boolean }) {
   const provider = useStore((s) => s.provider)
   const collapsed = useStore((s) => s.collapsed)
   const updateColumn = useStore((s) => s.updateColumn)
@@ -64,7 +64,7 @@ function ColumnRow({ tableId, column }: { tableId: string; column: Column }) {
       data-table-id={tableId}
       onPointerDown={() => setSelectedColumn({ tableId, columnId: column.id })}
       title={issueText || undefined}
-      className={`group relative flex items-center gap-1.5 border-t border-line ${issues.length || flashing ? 'issue-row' : ''} ${dropTarget ? 'bg-key/15' : 'bg-row'} ${isSelected ? 'outline outline-1 -outline-offset-1 outline-key' : ''} px-3 py-1.5 ${
+      className={`group relative flex items-center gap-1.5 border-t border-line ${last ? 'erd-last' : ''} ${issues.length || flashing ? 'issue-row' : ''} ${dropTarget ? 'bg-key/15' : 'bg-row'} ${isSelected ? 'outline outline-1 -outline-offset-1 outline-key' : ''} px-3 py-1.5 ${
         // While a line is being dragged, let it land on the row instead of on the inputs inside it.
         connecting ? '*:not-[.react-flow__handle]:pointer-events-none' : ''
       }`}
@@ -84,7 +84,9 @@ function ColumnRow({ tableId, column }: { tableId: string; column: Column }) {
       {collapsed ? (
         <>
           <span className="min-w-0 flex-1 truncate px-1 py-0.5 text-key">{column.name}</span>
-          <span className={`shrink-0 px-1 py-0.5 ${typeCheck.ok ? 'text-ink' : 'text-danger'}`}>{column.type}</span>
+          <span className={`shrink-0 px-1 py-0.5 ${typeCheck.ok ? 'erd-type text-ink' : 'text-danger'}`}>
+            {column.type}
+          </span>
         </>
       ) : (
         <>
@@ -98,7 +100,7 @@ function ColumnRow({ tableId, column }: { tableId: string; column: Column }) {
           <TypeCombobox
             provider={provider}
             title={typeCheck.ok ? undefined : typeCheck.error}
-            className={`${inputBase} w-44 ${typeCheck.ok ? 'text-ink' : 'text-danger'}`}
+            className={`${inputBase} w-44 ${typeCheck.ok ? 'erd-type text-ink' : 'text-danger'}`}
             value={column.type}
             onChange={(type) => patch({ type })}
           />
@@ -219,7 +221,7 @@ function TableNodeView({ id, data, selected }: NodeProps<TableNodeType>) {
         selected ? 'border-key' : 'border-line'
       }`}
     >
-      <div className="relative flex items-center gap-2 rounded-t-sm bg-canvas px-3 py-2">
+      <div className="erd-header relative flex items-center gap-2 rounded-t-sm bg-canvas px-3 py-2">
         {/* Invisible anchors where many-to-many lines attach for existing links. */}
         {(['l', 'r'] as const).flatMap((side) =>
           (['source', 'target'] as const).map((type) => (
@@ -262,14 +264,14 @@ function TableNodeView({ id, data, selected }: NodeProps<TableNodeType>) {
         <div className="flex-1" />
         {eraser && <ColorMenu tableId={id} color={data.color} resolved={color} />}
       </div>
-      {data.columns.map((c) => (
-        <ColumnRow key={c.id} tableId={id} column={c} />
+      {data.columns.map((c, i) => (
+        <ColumnRow key={c.id} tableId={id} column={c} last={i === data.columns.length - 1} />
       ))}
       {!collapsed && (
         <button
           type="button"
           onClick={() => addColumn(id)}
-          className="nodrag w-full cursor-pointer border-t border-line px-3 py-2 hidden text-left text-muted group-hover/table:block hover:bg-row hover:text-key"
+          className="erd-last nodrag w-full cursor-pointer border-t border-line px-3 py-2 hidden text-left text-muted group-hover/table:block hover:bg-row hover:text-key"
         >
           + add column
         </button>

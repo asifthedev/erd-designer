@@ -407,6 +407,11 @@ body {
   --color-mask: rgb(0 0 0 / 75%);
 }
 
+/* The Vercel theme draws data types in pink (a valid type only; an invalid one stays red). */
+[data-theme='vercel'] .erd-table .erd-type {
+  color: #ff6bb5;
+}
+
 /* Warm Dark: brown-tinted charcoal with cream text and amber accents. */
 [data-theme='warm'] {
   color-scheme: dark;
@@ -494,6 +499,15 @@ body {
 [data-theme='eraser'] .erd-table[data-selected='true'] {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--border) 55%, transparent), 0 14px 30px -12px rgb(0 0 0 / 60%);
 }
+/*
+ * Darker title bar. The corners of the bar and of the last row follow the card's rounded border (8px minus its 1px
+ * line), otherwise their square corners stick out past the curve and hide the border there.
+ */
+[data-theme='eraser'] .erd-table .erd-header {
+  background: color-mix(in srgb, #050505 68%, var(--body));
+  border-radius: 7px 7px 0 0;
+}
+[data-theme='eraser'] .erd-table .erd-last { border-radius: 0 0 7px 7px; }
 /* The icon moves from before the title to the far right; the colour menu sits just left of it. */
 [data-theme='eraser'] .erd-table .erd-icon { order: 5; }
 [data-theme='eraser'] .erd-table .erd-colors { order: 4; }
