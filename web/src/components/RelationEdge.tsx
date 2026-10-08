@@ -28,6 +28,8 @@ const HALF = 10 // half-height of the bar / crow's foot spread
 const BAR = 10 // distance of the "one" bar from the table border
 const FOOT = 17 // distance of the crow's foot apex from the table border
 const RING_R = 6
+/** How far the centre of the ring is from the table border: past the bar (one) or the crow's foot apex (many). */
+const ringOffset = (end: End) => (end === 'one' ? BAR : FOOT) + RING_R + 1
 const CORNER = 10 // radius of the rounded corners
 
 const dirOf = (p: Position): Dir => (p === Position.Right ? 1 : -1)
@@ -41,10 +43,11 @@ function midpoint(
   tx: number,
   ty: number,
   tPos: Position,
-  bend?: Bend,
+  bend: Bend | undefined,
+  ends: { s: number; t: number },
 ) {
   if (curved) {
-    const [x, y] = curveGeometry(sx, sy, dirOf(sPos), tx, ty, dirOf(tPos), bend).mid
+    const [x, y] = curveGeometry(sx, sy, dirOf(sPos), tx, ty, dirOf(tPos), bend, ends).mid
     return { x, y }
   }
   const [top, bottom] = routeParts(sx, sy, dirOf(sPos), tx, ty, dirOf(tPos), bend).lane
@@ -133,10 +136,12 @@ export function RelationEdge(props: EdgeProps) {
   const [liveBend, setLiveBend] = useState<Bend | null>(null)
   const bend = liveBend ?? savedBend
   const curved = useSettings((st) => st.edgeStyle) === 'curved'
-  const path = curved
-    ? curveGeometry(sourceX, sourceY, dirOf(sourcePosition), targetX, targetY, dirOf(targetPosition), bend).d
-    : relationPath(sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, bend)
   const [src, dst] = ENDS[kind]
+  // A curved line starts and ends at the centre of each ring, so it needs to know how far that is from the border.
+  const ends = { s: ringOffset(src), t: ringOffset(dst) }
+  const path = curved
+    ? curveGeometry(sourceX, sourceY, dirOf(sourcePosition), targetX, targetY, dirOf(targetPosition), bend, ends).d
+    : relationPath(sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, bend)
   const stroke = lit ? 'var(--color-link)' : 'var(--color-edge)'
   const width = lit ? 2 : 1.5
   const dir = (p: Position) => (p === Position.Right ? 1 : -1) as 1 | -1
@@ -149,6 +154,7 @@ export function RelationEdge(props: EdgeProps) {
     targetY,
     targetPosition,
     bend,
+    ends,
   )
 
   /**
@@ -299,7 +305,10 @@ export function ConnectionLine(props: ConnectionLineComponentProps) {
   }
   const curved = useSettings((st) => st.edgeStyle) === 'curved'
   const path = curved
-    ? curveGeometry(fromX, fromY, dirOf(fromPosition), toX, toY, dirOf(toPosition)).d
+    ? curveGeometry(fromX, fromY, dirOf(fromPosition), toX, toY, dirOf(toPosition), undefined, {
+        s: ringOffset('many'),
+        t: ringOffset('one'),
+      }).d
     : relationPath(fromX, fromY, fromPosition, toX, toY, toPosition)
   return <path d={path} fill="none" stroke="var(--color-key)" strokeWidth={2} />
 }

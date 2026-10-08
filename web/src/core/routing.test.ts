@@ -221,13 +221,15 @@ describe('curved line style', () => {
   const across: Args = [203, 72, 1, 422, 179, -1] // tables side by side (the example page's first line)
   const bracket: Args = [680, 100, 1, 600, 500, 1] // both lines leave the right side (stacked tables)
   const selfLink: Args = [680, 100, 1, 680, 300, 1] // a table linked to itself: both ends on one edge
+  const steep: Args = [0, 715, 1, 160, 103, -1] // little room sideways, far apart vertically (the screenshot)
+  const RING = { s: 24, t: 17 } // border-to-ring-centre: a crow's foot end and a bar end
 
-  /** Reads `M x,y C ... C ...` into its 3 + 3 + 1 points. */
+  /** Reads `M border L ring C .. C .. L border` into its points. */
   const parse = (d: string) => {
     const n = (d.match(/-?\d+(\.\d+)?/g) ?? []).map(Number)
-    expect(n).toHaveLength(14)
+    expect(n).toHaveLength(18)
     const pt = (i: number): [number, number] => [n[2 * i], n[2 * i + 1]]
-    return { p0: pt(0), c1: pt(1), c2: pt(2), m: pt(3), c3: pt(4), c4: pt(5), p3: pt(6) }
+    return { s: pt(0), p0: pt(1), c1: pt(2), c2: pt(3), m: pt(4), c3: pt(5), c4: pt(6), p3: pt(7), t: pt(8) }
   }
   const bez = (p: number[][], t: number) =>
     [0, 1].map(
@@ -235,9 +237,9 @@ describe('curved line style', () => {
         (1 - t) ** 3 * p[0][k] + 3 * (1 - t) ** 2 * t * p[1][k] + 3 * (1 - t) * t ** 2 * p[2][k] + t ** 3 * p[3][k],
     )
 
-  it('is the same single smooth curve as React Flow draws between side-by-side tables', () => {
-    // From the example page: M203,72 C312.5,72 312.5,179 422,179
-    const { p0, c1, c2, m, c3, c4, p3 } = parse(curveGeometry(...across).d)
+  it('between the rings it is the same single smooth curve as React Flow draws between side-by-side tables', () => {
+    // From the example page: M203,72 C312.5,72 312.5,179 422,179 (no ring stubs there: ends of 0)
+    const { p0, c1, c2, m, c3, c4, p3 } = parse(curveGeometry(...across, undefined, { s: 0, t: 0 }).d)
     const single = [
       [203, 72],
       [312.5, 72],
@@ -258,47 +260,62 @@ describe('curved line style', () => {
     }
   })
 
-  it('leaves and arrives level, right on the columns', () => {
-    for (const args of [across, bracket, selfLink]) {
-      const { p0, c1, c4, p3 } = parse(curveGeometry(...args).d)
-      expect(p0).toEqual([args[0], args[1]])
-      expect(p3).toEqual([args[3], args[4]])
-      expect(c1[1]).toBe(args[1]) // first handle is level with the start
-      expect(c4[1]).toBe(args[4]) // last handle is level with the end
-      expect(curveGeometry(...args).d).not.toMatch(/NaN|undefined/)
+  it('comes out of the centre of each ring, level with its column: a straight run from the border, then the curve', () => {
+    for (const args of [across, bracket, selfLink, steep]) {
+      const g = parse(curveGeometry(...args, undefined, RING).d)
+      expect(g.s).toEqual([args[0], args[1]]) // starts on the column, at the table border
+      expect(g.t).toEqual([args[3], args[4]]) // ends on the column of the other table
+      expect(g.p0).toEqual([args[0] + args[2] * RING.s, args[1]]) // ring centre of the first glyph, same height
+      expect(g.p3).toEqual([args[3] + args[5] * RING.t, args[4]]) // ring centre of the second glyph, same height
+      expect(g.c1[1]).toBe(args[1]) // the curve leaves the ring level ...
+      expect(g.c4[1]).toBe(args[4]) // ... and arrives at the other ring level
+      expect(curveGeometry(...args, undefined, RING).d).not.toMatch(/NaN|undefined/)
+    }
+  })
+
+  it('moving a table up or down never takes the line off its ring (the curve started at the border before)', () => {
+    for (const dy of [-600, -250, -40, 0, 40, 250, 600]) {
+      const g = parse(curveGeometry(0, 715, 1, 160, 715 + dy, -1, undefined, RING).d)
+      expect(g.p0).toEqual([24, 715]) // the ring sits at the same spot, on the line, whatever the other table does
+      expect(g.p3).toEqual([160 - 17, 715 + dy])
+      expect(g.c1[1]).toBe(715)
+      expect(g.c4[1]).toBe(715 + dy)
     }
   })
 
   it('the middle point follows the drag exactly (x sideways, cy up / down), the ends stay', () => {
-    const base = curveGeometry(...across).mid
-    expect(curveGeometry(...across, { x: 40, y: 0 }).mid).toEqual([base[0] + 40, base[1]])
-    expect(curveGeometry(...across, { x: 0, y: 0, cy: -70 }).mid).toEqual([base[0], base[1] - 70])
-    const moved = parse(curveGeometry(...across, { x: 25, y: 0, cy: 60 }).d)
-    expect(moved.p0).toEqual([203, 72])
-    expect(moved.p3).toEqual([422, 179])
+    const base = curveGeometry(...across, undefined, RING).mid
+    expect(curveGeometry(...across, { x: 40, y: 0 }, RING).mid).toEqual([base[0] + 40, base[1]])
+    expect(curveGeometry(...across, { x: 0, y: 0, cy: -70 }, RING).mid).toEqual([base[0], base[1] - 70])
+    const moved = parse(curveGeometry(...across, { x: 25, y: 0, cy: 60 }, RING).d)
+    expect(moved.s).toEqual([203, 72])
+    expect(moved.t).toEqual([422, 179])
+    expect(moved.p0).toEqual([203 + 24, 72])
   })
 
   it('stays smooth through the middle after a drag (both halves share its tangent)', () => {
-    const { c2, m, c3 } = parse(curveGeometry(...across, { x: 30, y: 0, cy: -90 }).d)
+    const { c2, m, c3 } = parse(curveGeometry(...across, { x: 30, y: 0, cy: -90 }, RING).d)
     expect(c2[0] + c3[0]).toBeCloseTo(2 * m[0], 1) // m is the midpoint of its two handles, so the line is smooth
     expect(c2[1] + c3[1]).toBeCloseTo(2 * m[1], 1)
   })
 
   it('stacked tables get a C-curve that bulges out past both', () => {
-    const { c1, c4, m } = parse(curveGeometry(...bracket).d)
-    expect(c1[0]).toBeGreaterThan(680) // the handle out of the first table reaches past its right edge
+    const { c1, c4, m } = parse(curveGeometry(...bracket, undefined, RING).d)
+    expect(c1[0]).toBeGreaterThan(680) // the handle out of the first ring reaches past the table's right edge
     expect(c4[0]).toBeGreaterThan(600) // and the one into the second table past its own
     expect(m[0]).toBeGreaterThan(680) // the middle of the curve is outside both
   })
 
   it('a table linked to itself still draws a visible loop (never a flat line on its border)', () => {
-    const { m, c1 } = parse(curveGeometry(...selfLink).d)
-    expect(c1[0]).toBeGreaterThanOrEqual(680 + 30)
-    expect(m[0]).toBeGreaterThan(680 + 30)
+    const { m, c1 } = parse(curveGeometry(...selfLink, undefined, RING).d)
+    expect(c1[0]).toBeGreaterThanOrEqual(680 + RING.s + 30)
+    expect(m[0]).toBeGreaterThan(680 + RING.s + 30)
   })
 
   it('the up / down offsets of the orthogonal style (ys, yt) do not change a curve, and cy does not change an orthogonal line', () => {
-    expect(curveGeometry(...across, { x: 0, y: 0, ys: -90, yt: 60 })).toEqual(curveGeometry(...across))
+    expect(curveGeometry(...across, { x: 0, y: 0, ys: -90, yt: 60 }, RING)).toEqual(
+      curveGeometry(...across, undefined, RING),
+    )
     expect(routePoints(...across, { x: 0, y: 0, cy: 80 })).toEqual(routePoints(...across))
   })
 })

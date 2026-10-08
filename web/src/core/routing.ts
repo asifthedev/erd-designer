@@ -144,6 +144,11 @@ const at = ([x, y]: Pt) => `${n2(x)},${n2(y)}`
  * lines leave the same side get a C-curve that bulges out beyond both; the bulge never gets smaller than MIN_LOOP,
  * so a table linked to itself still draws a visible loop.
  *
+ * The curve itself starts and ends at the centre of the ring of each cardinality glyph (`ends` = how far that is
+ * from the table border), and the short run between the border and the ring is straight. So the line always
+ * comes out of the middle of the ring, level with the column, however far apart the tables are vertically; a curve
+ * starting at the border would already have turned away by the time it reached the ring.
+ *
  * Moving the line: the curve is drawn as two halves meeting at its middle point M, with the tangent the single
  * curve has there. Un-moved, the two halves ARE the single curve (splitting a Bezier at t = 0.5 changes nothing).
  * A drag moves M by exactly the pointer's movement (bend.x sideways, bend.cy up / down); the ends stay put and
@@ -151,6 +156,8 @@ const at = ([x, y]: Pt) => `${n2(x)},${n2(y)}`
  */
 const MIN_LOOP = 60
 const CURVATURE = 0.25 // React Flow's default
+/** Distance from the table border to the ring centre when nothing more is known (a crow's foot end). */
+const DEFAULT_RING = 24
 
 /** React Flow's handle length: half the distance, or (when the other end is behind) a root-shaped bulge. */
 const handleLength = (distance: number) => (distance >= 0 ? 0.5 * distance : CURVATURE * 25 * Math.sqrt(-distance))
@@ -163,13 +170,15 @@ export function curveGeometry(
   ty: number,
   tDir: Dir,
   bend?: Bend,
+  /** Border-to-ring-centre distance at the source and at the target end (they differ for a "1" and an "n" end). */
+  ends: { s: number; t: number } = { s: DEFAULT_RING, t: DEFAULT_RING },
 ): { d: string; mid: Pt } {
   const loop = sDir === tDir ? (v: number) => Math.max(v, MIN_LOOP) : (v: number) => v
-  // Distance towards the other end, measured in the direction the line leaves.
-  const p0: Pt = [sx, sy]
-  const p3: Pt = [tx, ty]
-  const p1: Pt = [sx + sDir * loop(handleLength((tx - sx) * sDir)), sy]
-  const p2: Pt = [tx + tDir * loop(handleLength((sx - tx) * tDir)), ty]
+  // The curve runs between the two ring centres; the stretch from each table border to its ring is a straight line.
+  const p0: Pt = [sx + sDir * ends.s, sy]
+  const p3: Pt = [tx + tDir * ends.t, ty]
+  const p1: Pt = [p0[0] + sDir * loop(handleLength((p3[0] - p0[0]) * sDir)), p0[1]]
+  const p2: Pt = [p3[0] + tDir * loop(handleLength((p0[0] - p3[0]) * tDir)), p3[1]]
 
   // The single curve's middle point and tangent there, then M = that point moved by the drag.
   const mid0: Pt = [(p0[0] + 3 * p1[0] + 3 * p2[0] + p3[0]) / 8, (p0[1] + 3 * p1[1] + 3 * p2[1] + p3[1]) / 8]
@@ -181,5 +190,8 @@ export function curveGeometry(
   const c2: Pt = [m[0] - tan[0] / 6, m[1] - tan[1] / 6]
   const c3: Pt = [m[0] + tan[0] / 6, m[1] + tan[1] / 6]
   const c4: Pt = [p3[0] - (p3[0] - p2[0]) / 2, p3[1] - (p3[1] - p2[1]) / 2]
-  return { d: `M${at(p0)}C${at(c1)} ${at(c2)} ${at(m)}C${at(c3)} ${at(c4)} ${at(p3)}`, mid: m }
+  return {
+    d: `M${at([sx, sy])}L${at(p0)}C${at(c1)} ${at(c2)} ${at(m)}C${at(c3)} ${at(c4)} ${at(p3)}L${at([tx, ty])}`,
+    mid: m,
+  }
 }
