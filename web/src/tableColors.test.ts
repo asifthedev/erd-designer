@@ -27,7 +27,7 @@ describe('table colours', () => {
     for (const key of ['--body', '--border', '--divider', '--name', '--type']) expect(t[key], key).toMatch(/^#[0-9a-f]{6}$/i)
     expect(contrast(t['--name'], t['--body']), 'names').toBeGreaterThanOrEqual(4.5)
     expect(contrast(t['--type'], t['--body']), 'types').toBeGreaterThanOrEqual(3)
-    expect(contrast(t['--border'], '#161616'), 'border against the canvas').toBeGreaterThanOrEqual(3)
+    expect(contrast(t['--border'], '#171717'), 'border against the canvas').toBeGreaterThanOrEqual(3)
   })
 
   it('the swatch in the menu is the table border colour', () => {

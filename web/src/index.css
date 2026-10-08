@@ -444,9 +444,9 @@ body {
  */
 [data-theme='eraser'] {
   color-scheme: dark;
-  --color-canvas: #161616;
-  --color-grid: #1a1a1a;
-  --color-dot: #272727;
+  --color-canvas: #171717;
+  --color-grid: #1c1c1c;
+  --color-dot: #2a2a2a;
   --color-surface: #1e1e1e;
   --color-row: #242424;
   --color-line: #343434;
@@ -464,7 +464,7 @@ body {
   --color-secondary: #2b2b2b;
   --color-hover: rgb(255 255 255 / 8%);
   --color-hover-strong: rgb(255 255 255 / 12%);
-  --color-mask: rgb(22 22 22 / 70%);
+  --color-mask: rgb(23 23 23 / 70%);
 }
 
 /*
@@ -500,11 +500,11 @@ body {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--border) 55%, transparent), 0 14px 30px -12px rgb(0 0 0 / 60%);
 }
 /*
- * Darker title bar. The corners of the bar and of the last row follow the card's rounded border (8px minus its 1px
+ * Title bar in the canvas colour (#171717). The corners of the bar and of the last row follow the card's rounded border (8px minus its 1px
  * line), otherwise their square corners stick out past the curve and hide the border there.
  */
 [data-theme='eraser'] .erd-table .erd-header {
-  background: color-mix(in srgb, #050505 68%, var(--body));
+  background: #171717;
   border-radius: 7px 7px 0 0;
 }
 [data-theme='eraser'] .erd-table .erd-last { border-radius: 0 0 7px 7px; }

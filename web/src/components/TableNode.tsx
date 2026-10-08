@@ -12,7 +12,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useCloseOnOutsidePointer } from '../hooks/useCloseOnOutsidePointer'
 import { useSettings } from '../settings'
 import { resolveTableColor, TABLE_COLORS } from '../tableColors'
-import { tableIcon } from './tableIcons'
 import { TypeCombobox } from './TypeCombobox'
 import { useColumnIssues } from './issuesContext'
 import { resolveSqlType } from '../core/sqlType'
@@ -81,29 +80,23 @@ function ColumnRow({ tableId, column, last }: { tableId: string; column: Column;
           }`}
         />
       ))}
-      {collapsed ? (
+      <input
+        aria-label="Column name"
+        className={`${inputBase} ${collapsed ? 'flex-1' : 'w-40'} text-key`}
+        value={column.name}
+        spellCheck={false}
+        onChange={(e) => patch({ name: e.target.value })}
+      />
+      <TypeCombobox
+        provider={provider}
+        title={typeCheck.ok ? undefined : typeCheck.error}
+        className={`${inputBase} w-44 ${collapsed ? 'text-right' : ''} ${typeCheck.ok ? 'erd-type text-ink' : 'text-danger'}`}
+        value={column.type}
+        onChange={(type) => patch({ type })}
+      />
+      {/* The compact view keeps name and type editable; default value and the PK / NN / UQ flags are hidden there. */}
+      {!collapsed && (
         <>
-          <span className="min-w-0 flex-1 truncate px-1 py-0.5 text-key">{column.name}</span>
-          <span className={`shrink-0 px-1 py-0.5 ${typeCheck.ok ? 'erd-type text-ink' : 'text-danger'}`}>
-            {column.type}
-          </span>
-        </>
-      ) : (
-        <>
-          <input
-            aria-label="Column name"
-            className={`${inputBase} w-40 text-key`}
-            value={column.name}
-            spellCheck={false}
-            onChange={(e) => patch({ name: e.target.value })}
-          />
-          <TypeCombobox
-            provider={provider}
-            title={typeCheck.ok ? undefined : typeCheck.error}
-            className={`${inputBase} w-44 ${typeCheck.ok ? 'erd-type text-ink' : 'text-danger'}`}
-            value={column.type}
-            onChange={(type) => patch({ type })}
-          />
           <input
             aria-label="Default value"
             placeholder="default"
@@ -206,7 +199,6 @@ function TableNodeView({ id, data, selected }: NodeProps<TableNodeType>) {
   const addColumn = useStore((s) => s.addColumn)
   const setHoveredTable = useStore((s) => s.setHoveredTable)
   const collapsed = useStore((s) => s.collapsed)
-  const Icon = tableIcon(data.icon)
   const eraser = useSettings((s) => s.theme === 'eraser')
   const color = resolveTableColor(id, data.color)
 
@@ -235,31 +227,18 @@ function TableNodeView({ id, data, selected }: NodeProps<TableNodeType>) {
             />
           )),
         )}
-        {collapsed ? (
-          <>
-            <span className="erd-icon flex">
-              <Icon className="size-4 shrink-0 text-muted" aria-hidden />
-            </span>
-            <span className="erd-title px-1 text-[18px] font-semibold">{data.name}</span>
-          </>
-        ) : (
-          <>
-            <span className="erd-icon flex">
-              <IconPicker value={data.icon} onChange={(icon) => setTableIcon(id, icon)} />
-            </span>
-            <input
-              aria-label="Table name"
-              className={`erd-title ${inputBase} text-[18px] font-semibold`}
-              // Monospace font, so the text is exactly `ch` per character wide; add the input's padding + border.
-              style={{
-                width: `calc(${Math.max(data.name.length, 4)}ch + 1.1rem)`,
-              }}
-              value={data.name}
-              spellCheck={false}
-              onChange={(e) => renameTable(id, e.target.value)}
-            />
-          </>
-        )}
+        <span className="erd-icon flex">
+          <IconPicker value={data.icon} onChange={(icon) => setTableIcon(id, icon)} />
+        </span>
+        <input
+          aria-label="Table name"
+          className={`erd-title ${inputBase} text-[18px] font-semibold`}
+          // Monospace font, so the text is exactly `ch` per character wide; add the input's padding + border.
+          style={{ width: `calc(${Math.max(data.name.length, 4)}ch + 1.1rem)` }}
+          value={data.name}
+          spellCheck={false}
+          onChange={(e) => renameTable(id, e.target.value)}
+        />
         {/* Empty header space: click to select the table, drag to move it. */}
         <div className="flex-1" />
         {eraser && <ColorMenu tableId={id} color={data.color} resolved={color} />}
