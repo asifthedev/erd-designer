@@ -219,7 +219,7 @@ export function RelationEdge(props: EdgeProps) {
       ))}
       {/* Glowing "current" running along the line; shown by CSS on hover, and always while lit (selected, or touching the hovered table). */}
       {(['relation-flow-halo-wide', 'relation-flow-halo', 'relation-flow'] as const).map((cls) => (
-        <path key={cls} d={path} className={`${cls} ${lit ? 'is-selected' : ''}`} />
+        <path key={cls} d={path} data-export-hide className={`${cls} ${lit ? 'is-selected' : ''}`} />
       ))}
       <g style={{ color: stroke, strokeWidth: width }} className="relation-glyphs">
         <Glyph
@@ -241,6 +241,7 @@ export function RelationEdge(props: EdgeProps) {
         <EdgeLabelRenderer>
           <button
             type="button"
+            data-export-hide
             title="Switch direction (swap parent and child table)"
             aria-label="Switch relation direction"
             onClick={(e) => {

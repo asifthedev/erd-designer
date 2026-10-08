@@ -443,6 +443,34 @@ describe('starter workspace', () => {
   })
 })
 
+describe('select all tables', () => {
+  it('picks every table, and clears the picked line and column', async () => {
+    const { useStore } = await import('../store')
+    const st = () => useStore.getState()
+    st().loadSample()
+    useStore.setState({ selectedEdgeId: 't1:c1', edgePanelOpen: false })
+    useStore.setState({ nodes: st().nodes.map((n, i) => ({ ...n, selected: i === 0 })) }) // only the first is picked
+
+    st().selectAllTables()
+    expect(st().nodes.length).toBeGreaterThan(1)
+    expect(st().nodes.every((n) => n.selected)).toBe(true)
+    expect(st().selectedEdgeId).toBeNull()
+    expect(st().selectedColumn).toBeNull()
+  })
+
+  it('does nothing harmful on an empty canvas, and keeps the tables themselves untouched', async () => {
+    const { useStore } = await import('../store')
+    const st = () => useStore.getState()
+    st().clear()
+    st().selectAllTables()
+    expect(st().nodes).toEqual([])
+    st().loadSample()
+    const before = st().nodes.map((n) => ({ id: n.id, data: n.data, position: n.position }))
+    st().selectAllTables()
+    expect(st().nodes.map((n) => ({ id: n.id, data: n.data, position: n.position }))).toEqual(before)
+  })
+})
+
 describe('side panel', () => {
   it('shows either the code or the relation settings, never both (last opened wins)', async () => {
     const { useStore } = await import('../store')

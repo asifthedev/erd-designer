@@ -73,6 +73,7 @@ export function TypeCombobox({ value, onChange, provider, className = '', title 
                 input?.focus()
                 show(!open)
               }}
+              data-export-hide
               className="nodrag absolute top-1/2 right-1 grid size-5 -translate-y-1/2 cursor-pointer place-items-center rounded-sm text-muted/70 hover:bg-hover hover:text-ink"
             >
               <ChevronDown

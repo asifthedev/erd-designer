@@ -12,7 +12,7 @@ import {
   useReactFlow,
   type EdgeChange,
 } from '@xyflow/react'
-import { ChevronsDownUp, ChevronsUpDown, PanelLeftOpen, Table2 } from 'lucide-react'
+import { PanelLeftOpen } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { DbIcon } from './components/DbIcon'
 import { Select } from './components/Select'
@@ -29,7 +29,8 @@ import { Landing } from '@/landing/Landing'
 import { APP_PATH, SETTINGS_PATH, usePath } from '@/lib/route'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { startSettingsSync, stopSettingsSync } from './settingsSync'
-import { ZoomBar } from './components/ZoomBar'
+import { BottomToolbar } from './components/BottomToolbar'
+import { ExportMenu } from './components/ExportMenu'
 import { ContextMenu, DELETE_HINT, type MenuTarget } from './components/ContextMenu'
 import { IssuesProvider } from './components/issues'
 import { PrismaPanel } from './components/PrismaPanel'
@@ -63,6 +64,7 @@ function Canvas() {
   const cutTables = useStore((s) => s.cutTables)
   const duplicateTables = useStore((s) => s.duplicateTables)
   const pasteTables = useStore((s) => s.pasteTables)
+  const selectAllTables = useStore((s) => s.selectAllTables)
   const hasClipboard = useStore((s) => s.clipboard !== null)
   const { screenToFlowPosition, fitView } = useReactFlow()
   const authed = useAuth((s) => s.status === 'authed')
@@ -120,13 +122,24 @@ function Canvas() {
     return () => window.removeEventListener('keydown', onKey)
   }, [selectedColumn, deleteColumn, setSelectedColumn])
 
-  // Ctrl/Cmd + C / X / V on the selected tables (fields keep their own copy/paste).
+  // Ctrl/Cmd + A / C / X / V / D on the tables (fields keep their own select-all, copy and paste).
   useEffect(() => {
+    // Ctrl+A must not take over "select all" of the text in a side panel (the code) the person just clicked in.
+    let pressedInPanel = false
+    const onDown = (e: globalThis.PointerEvent) => {
+      pressedInPanel = !!(e.target as HTMLElement).closest('aside, [role=dialog], [role=menu]')
+    }
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return
       if ((e.target as HTMLElement).closest('input, select, textarea, [contenteditable]')) return
-      if (useStore.getState().selectedColumn) return
       const key = e.key.toLowerCase()
+      if (key === 'a') {
+        if (pressedInPanel) return
+        e.preventDefault()
+        selectAllTables() // then Delete removes them all (React Flow's own Delete key, see deleteKeyCode below)
+        return
+      }
+      if (useStore.getState().selectedColumn) return
       const ids = useStore
         .getState()
         .nodes.filter((n) => n.selected)
@@ -139,8 +152,12 @@ function Canvas() {
       e.preventDefault()
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [copyTables, cutTables, duplicateTables, pasteTables])
+    window.addEventListener('pointerdown', onDown, true)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('pointerdown', onDown, true)
+    }
+  }, [copyTables, cutTables, duplicateTables, pasteTables, selectAllTables])
 
   return (
     <>
@@ -265,7 +282,7 @@ function Canvas() {
             </button>
           </Panel>
         )}
-        <ZoomBar showGrid={showGrid} onToggleGrid={() => setShowGrid((g) => !g)} />
+        <BottomToolbar showGrid={showGrid} onToggleGrid={() => setShowGrid((g) => !g)} />
         <MiniMap pannable zoomable nodeColor="var(--color-line)" />
       </ReactFlow>
       <ContextMenu menu={menu} onClose={closeMenu} />
@@ -277,64 +294,19 @@ function Canvas() {
 function Toolbar() {
   const provider = useStore((s) => s.provider)
   const setProvider = useStore((s) => s.setProvider)
-  const addTable = useStore((s) => s.addTable)
-  const loadSample = useStore((s) => s.loadSample)
-  const clear = useStore((s) => s.clear)
   const codeOpen = useStore((s) => s.codeOpen)
   const toggleCode = useStore((s) => s.toggleCode)
-  const collapsed = useStore((s) => s.collapsed)
-  const toggleCollapsed = useStore((s) => s.toggleCollapsed)
-  const { screenToFlowPosition } = useReactFlow()
 
   const btn =
     'cursor-pointer rounded-sm border border-line px-2.5 py-1 text-muted hover:border-key hover:text-key'
 
+  // The canvas tools (add table, collapse, sample, clear, zoom) are in the bar along the bottom of the canvas.
   return (
     <header className="flex items-center gap-3 border-b border-line bg-surface px-4 py-2">
       <h1 className="mr-4 font-semibold">
         <span className="text-key">erd</span>
         <span className="text-muted">.designer</span>
       </h1>
-      <button
-        type="button"
-        className={`${btn} flex items-center gap-1.5`}
-        title="Add a new table to the canvas"
-        onClick={() =>
-          // Drop the new table inside what the user is looking at, without changing the zoom level.
-          addTable(
-            screenToFlowPosition({
-              x: window.innerWidth * 0.3,
-              y: window.innerHeight * 0.3,
-            }),
-          )
-        }
-      >
-        <Table2 className="size-4" aria-hidden />
-        Add table
-      </button>
-      <button
-        type="button"
-        aria-pressed={collapsed}
-        className={`${btn} flex items-center gap-1.5 ${collapsed ? 'border-key! text-key!' : ''}`}
-        title={collapsed ? 'Show every table in full' : 'Collapse all tables to column names and types'}
-        onClick={toggleCollapsed}
-      >
-        {collapsed ? <ChevronsUpDown className="size-4" aria-hidden /> : <ChevronsDownUp className="size-4" aria-hidden />}
-        {collapsed ? 'Expand' : 'Collapse'}
-      </button>
-      <button type="button" className={btn} onClick={loadSample}>
-        Sample
-      </button>
-      <button
-        type="button"
-        className={`${btn} hover:border-danger! hover:text-danger!`}
-        onClick={() => {
-          // Destructive and not undoable, so ask first.
-          if (window.confirm('Remove all tables?')) clear()
-        }}
-      >
-        Clear
-      </button>
 
       <div className="ml-auto flex items-center gap-2 text-muted">
         Database
@@ -355,6 +327,7 @@ function Toolbar() {
       >
         {'{ }'} Code
       </button>
+      <ExportMenu />
       <SettingsLink />
       <UserMenu />
     </header>

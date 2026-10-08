@@ -64,6 +64,8 @@ type State = {
   pasteCount: number
   /** The clipboard came from Cut: pasting moves the tables, so they keep their names. */
   clipboardIsCut: boolean
+  /** Picks every table (Ctrl/Cmd + A); a following Delete removes them all. */
+  selectAllTables: () => void
   copyTables: (ids: string[]) => void
   /** Copy the given tables in place (offset a little), without touching the clipboard. */
   duplicateTables: (ids: string[]) => void
@@ -686,6 +688,12 @@ export const useStore = create<State>()(
       toggleList: () => set((s) => ({ listOpen: !s.listOpen })),
       toggleCollapsed: () => set((s) => ({ collapsed: !s.collapsed })),
       setHoveredTable: (hoveredTableId) => set({ hoveredTableId }),
+      selectAllTables: () =>
+        set((s) => ({
+          nodes: s.nodes.map((n) => (n.selected ? n : { ...n, selected: true })),
+          selectedEdgeId: null,
+          selectedColumn: null,
+        })),
       copyTables: (ids) => {
         const picked = get().nodes.filter((n) => ids.includes(n.id))
         if (!picked.length) return

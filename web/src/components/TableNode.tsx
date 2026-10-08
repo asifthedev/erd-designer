@@ -149,6 +149,7 @@ function ColorMenu({ tableId, color, resolved }: { tableId: string; color: strin
           type="button"
           title="Table colour"
           aria-label="Table colour"
+          data-export-hide
           className={`erd-colors nodrag grid size-7 cursor-pointer place-items-center rounded-sm text-muted outline-none hover:bg-hover-strong hover:text-ink focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-key group-hover/table:opacity-100 ${
             open ? 'opacity-100' : 'opacity-0'
           }`}
@@ -249,6 +250,7 @@ function TableNodeView({ id, data, selected }: NodeProps<TableNodeType>) {
       {!collapsed && (
         <button
           type="button"
+          data-export-hide
           onClick={() => addColumn(id)}
           className="erd-last nodrag w-full cursor-pointer border-t border-line px-3 py-2 hidden text-left text-muted group-hover/table:block hover:bg-row hover:text-key"
         >

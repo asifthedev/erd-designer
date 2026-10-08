@@ -4,6 +4,18 @@ A visual database designer. Drag tables onto a canvas, draw relations, and get a
 schema** and **SQL** (PostgreSQL / MySQL / SQLite) generated live. Sign in to keep your ERD in your account and open it on any device. The **Free plan includes one diagram**; creating a
 second one asks you to upgrade your plan. Your diagrams are listed in a collapsible left sidebar.
 
+## Canvas tools, shortcuts and export
+
+- **Bottom toolbar** (like Figma): add a table, collapse / expand all tables, load the sample, clear the canvas, then
+  zoom, fit and the grid. The top bar keeps the database, the code panel, **Export**, Settings and the account.
+- **Ctrl / Cmd + A** picks every table, and **Delete** then removes them all (and their relations). Ctrl / Cmd + C, X,
+  V and D copy, cut, paste and duplicate the picked tables. In a text field, Ctrl + A still selects the text.
+- **Export** (top bar): the whole diagram as a **PNG**, **SVG** or **PDF** picture, looking as it does on screen (theme,
+  table colours, font, line style), with all tables and a margin, not only the visible part. The PDF is one page the
+  size of the diagram. The SVG is self-contained (fonts included) and opens in browsers; design tools that don't draw
+  embedded HTML may not show its text. Built with `html-to-image` and `jsPDF`, both loaded only when you export
+  (`web/src/export/exportDiagram.ts`).
+
 ## Settings
 
 The gear icon (toolbar, and at the foot of the diagram list) opens the **Settings** page, `/settings`, with only the
