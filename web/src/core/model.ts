@@ -43,6 +43,8 @@ export type Table = {
   name: string
   /** Lucide icon name chosen for the table header (display only; not exported to Prisma). */
   icon?: string
+  /** Table colour id (see tableColors.ts); only the Eraser theme shows it. Unset = picked automatically from the id. */
+  color?: string
   columns: Column[]
 }
 

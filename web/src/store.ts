@@ -94,6 +94,8 @@ type State = {
   addTable: (position?: { x: number; y: number }) => void
   renameTable: (tableId: string, name: string) => void
   setTableIcon: (tableId: string, icon: string | undefined) => void
+  /** Colour of one table (Eraser theme); undefined goes back to the automatic colour. */
+  setTableColor: (tableId: string, color: string | undefined) => void
   deleteTable: (tableId: string) => void
   addColumn: (tableId: string) => void
   updateColumn: (tableId: string, columnId: string, patch: Partial<Omit<Column, 'id'>>) => void
@@ -157,6 +159,7 @@ function sampleWorkspace(): { nodes: TableNodeType[]; manyToMany: ManyToMany[] }
     id: uid(),
     name: 'users',
     icon: 'Users',
+    color: 'blue',
     columns: [
       pk(),
       { ...newColumn('email', 'VARCHAR(255)'), notNull: true, unique: true },
@@ -168,6 +171,7 @@ function sampleWorkspace(): { nodes: TableNodeType[]; manyToMany: ManyToMany[] }
     id: uid(),
     name: 'posts',
     icon: 'FileText',
+    color: 'green',
     columns: [
       pk(),
       { ...newColumn('title', 'VARCHAR(200)'), notNull: true },
@@ -185,6 +189,7 @@ function sampleWorkspace(): { nodes: TableNodeType[]; manyToMany: ManyToMany[] }
     id: uid(),
     name: 'comments',
     icon: 'MessageSquare',
+    color: 'orange',
     columns: [
       pk(),
       { ...newColumn('body', 'TEXT'), notNull: true },
@@ -200,6 +205,7 @@ function sampleWorkspace(): { nodes: TableNodeType[]; manyToMany: ManyToMany[] }
     id: uid(),
     name: 'tags',
     icon: 'Tags',
+    color: 'purple',
     columns: [pk(), { ...newColumn('name', 'VARCHAR(50)'), notNull: true, unique: true }],
   }
   return {
@@ -399,6 +405,8 @@ export const useStore = create<State>()(
 
       setTableIcon: (tableId, icon) =>
         set((s) => ({ nodes: mapTable(s.nodes, tableId, (t) => ({ ...t, icon })) })),
+      setTableColor: (tableId, color) =>
+        set((s) => ({ nodes: mapTable(s.nodes, tableId, (t) => ({ ...t, color })) })),
       renameTable: (tableId, name) =>
         set((s) => ({ nodes: mapTable(s.nodes, tableId, (t) => ({ ...t, name })) })),
 

@@ -6,6 +6,12 @@ import { Handle, Position, useConnection, type NodeProps } from '@xyflow/react'
 import { memo } from 'react'
 import type { Column } from '../core/model'
 import { IconPicker } from './IconPicker'
+import { Ellipsis } from 'lucide-react'
+import { useState } from 'react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useCloseOnOutsidePointer } from '../hooks/useCloseOnOutsidePointer'
+import { useSettings } from '../settings'
+import { resolveTableColor, TABLE_COLORS } from '../tableColors'
 import { tableIcon } from './tableIcons'
 import { TypeCombobox } from './TypeCombobox'
 import { useColumnIssues } from './issuesContext'
@@ -136,6 +142,61 @@ function ColumnRow({ tableId, column }: { tableId: string; column: Column }) {
   )
 }
 
+/** "..." menu in the table header with the colour swatches. Only offered in the Eraser theme, where colour shows. */
+function ColorMenu({ tableId, color, resolved }: { tableId: string; color: string | undefined; resolved: string }) {
+  const setTableColor = useStore((s) => s.setTableColor)
+  const [open, setOpen] = useState(false)
+  useCloseOnOutsidePointer(open, () => setOpen(false))
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          title="Table colour"
+          aria-label="Table colour"
+          className={`erd-colors nodrag grid size-7 cursor-pointer place-items-center rounded-sm text-muted outline-none hover:bg-hover-strong hover:text-ink focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-key group-hover/table:opacity-100 ${
+            open ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          <Ellipsis size={17} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="font-ui nodrag w-auto p-3">
+        <div className="mb-2 flex items-center gap-4">
+          <span className="text-[12px] font-semibold tracking-wide text-muted uppercase">Colour</span>
+          <button
+            type="button"
+            disabled={color === undefined}
+            onClick={() => setTableColor(tableId, undefined)}
+            className="ml-auto cursor-pointer rounded-sm px-1.5 py-0.5 text-[12px] text-muted hover:text-key disabled:cursor-default disabled:opacity-40 disabled:hover:text-muted"
+          >
+            Auto
+          </button>
+        </div>
+        <div className="grid grid-cols-5 gap-2" role="group" aria-label="Table colour">
+          {TABLE_COLORS.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              title={c.name}
+              aria-label={c.name}
+              aria-pressed={resolved === c.id}
+              onClick={() => {
+                setTableColor(tableId, c.id)
+                setOpen(false)
+              }}
+              style={{ background: c.swatch }}
+              className={`size-7 cursor-pointer rounded-full outline-offset-2 outline-ink hover:scale-110 focus-visible:outline-2 ${
+                resolved === c.id ? 'outline-2' : ''
+              }`}
+            />
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 /** The table card itself. `selected` comes from React Flow and drives the highlighted border. */
 function TableNodeView({ id, data, selected }: NodeProps<TableNodeType>) {
   const renameTable = useStore((s) => s.renameTable)
@@ -144,13 +205,17 @@ function TableNodeView({ id, data, selected }: NodeProps<TableNodeType>) {
   const setHoveredTable = useStore((s) => s.setHoveredTable)
   const collapsed = useStore((s) => s.collapsed)
   const Icon = tableIcon(data.icon)
+  const eraser = useSettings((s) => s.theme === 'eraser')
+  const color = resolveTableColor(id, data.color)
 
   return (
     <div
+      data-color={color}
+      data-selected={selected || undefined}
       // While the pointer is on the table, its relation lines glow (see deriveEdges).
       onPointerEnter={() => setHoveredTable(id)}
       onPointerLeave={() => setHoveredTable(null)}
-      className={`table-font group/table ${collapsed ? 'min-w-[340px]' : 'min-w-[680px]'} rounded-sm border bg-surface text-[16px] shadow-lg shadow-black/30 ${
+      className={`erd-table table-font group/table ${collapsed ? 'min-w-[340px]' : 'min-w-[680px]'} rounded-sm border bg-surface text-[16px] shadow-lg shadow-black/30 ${
         selected ? 'border-key' : 'border-line'
       }`}
     >
@@ -170,15 +235,19 @@ function TableNodeView({ id, data, selected }: NodeProps<TableNodeType>) {
         )}
         {collapsed ? (
           <>
-            <Icon className="size-4 shrink-0 text-muted" aria-hidden />
-            <span className="px-1 text-[18px] font-semibold">{data.name}</span>
+            <span className="erd-icon flex">
+              <Icon className="size-4 shrink-0 text-muted" aria-hidden />
+            </span>
+            <span className="erd-title px-1 text-[18px] font-semibold">{data.name}</span>
           </>
         ) : (
           <>
-            <IconPicker value={data.icon} onChange={(icon) => setTableIcon(id, icon)} />
+            <span className="erd-icon flex">
+              <IconPicker value={data.icon} onChange={(icon) => setTableIcon(id, icon)} />
+            </span>
             <input
               aria-label="Table name"
-              className={`${inputBase} text-[18px] font-semibold`}
+              className={`erd-title ${inputBase} text-[18px] font-semibold`}
               // Monospace font, so the text is exactly `ch` per character wide; add the input's padding + border.
               style={{
                 width: `calc(${Math.max(data.name.length, 4)}ch + 1.1rem)`,
@@ -191,6 +260,7 @@ function TableNodeView({ id, data, selected }: NodeProps<TableNodeType>) {
         )}
         {/* Empty header space: click to select the table, drag to move it. */}
         <div className="flex-1" />
+        {eraser && <ColorMenu tableId={id} color={data.color} resolved={color} />}
       </div>
       {data.columns.map((c) => (
         <ColumnRow key={c.id} tableId={id} column={c} />

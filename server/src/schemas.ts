@@ -62,6 +62,7 @@ const table = z.object({
   id: z.string().min(1).max(100),
   name: z.string().max(128),
   icon: z.string().max(60).optional(),
+  color: z.string().max(20).optional(),
   columns: z.array(column).max(500),
 })
 

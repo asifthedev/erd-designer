@@ -53,6 +53,14 @@ describe('diagramSchema', () => {
     )
   })
 
+  it('keeps the table icon and colour instead of stripping them', () => {
+    const styled = { ...node, data: { ...node.data, icon: 'Users', color: 'teal' } }
+    const r = diagramSchema.parse({ provider: 'postgresql', nodes: [styled], manyToMany: [] })
+    expect(r.nodes[0].data.icon).toBe('Users')
+    expect(r.nodes[0].data.color).toBe('teal')
+    expect(diagramSchema.safeParse({ provider: 'postgresql', nodes: [{ ...node, data: { ...node.data, color: 'x'.repeat(21) } }], manyToMany: [] }).success).toBe(false)
+  })
+
   it('keeps a hand-dragged line shape (bend) instead of stripping it', () => {
     const withBend = {
       ...node,

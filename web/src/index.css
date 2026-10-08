@@ -434,6 +434,75 @@ body {
 }
 
 /*
+ * Eraser: near-black canvas, white relation lines and coloured tables (see ".erd-table" below). Only this theme
+ * moves the table icon to the right and offers the per-table colour menu.
+ */
+[data-theme='eraser'] {
+  color-scheme: dark;
+  --color-canvas: #161616;
+  --color-grid: #1a1a1a;
+  --color-dot: #272727;
+  --color-surface: #1e1e1e;
+  --color-row: #242424;
+  --color-line: #343434;
+  --color-edge: #d6d6d6;
+  --color-ink: #ececec;
+  --color-muted: #919191;
+  --color-key: #6ea8fe;
+  --color-num: #e2b36a;
+  --color-ok: #7bd88f;
+  --color-link: #4ade80;
+  --color-link-flow: #bbf7d0;
+  --color-danger: #f26d6d;
+  --color-warning: #f0a45d;
+  --color-primary-foreground: #0b1220;
+  --color-secondary: #2b2b2b;
+  --color-hover: rgb(255 255 255 / 8%);
+  --color-hover-strong: rgb(255 255 255 / 12%);
+  --color-mask: rgb(22 22 22 / 70%);
+}
+
+/*
+ * Table colours. Every table carries data-color (all themes), but only Eraser uses it: below, its tokens are
+ * re-pointed inside the table so the same utility classes (bg-surface, text-key ...) paint the coloured look.
+ *   --body: card + rows, --border: outline, --divider: lines between rows, --name: titles and column names,
+ *   --type: data types.
+ */
+.erd-table[data-color='blue'] { --body: #252a31; --border: #407edd; --divider: #293649; --name: #b5cdf1; --type: #4582de; }
+.erd-table[data-color='green'] { --body: #263029; --border: #64d483; --divider: #2d4432; --name: #baecc8; --type: #54cf76; }
+.erd-table[data-color='orange'] { --body: #312e25; --border: #de9f40; --divider: #473928; --name: #f2d9b3; --type: #de9f41; }
+.erd-table[data-color='purple'] { --body: #302631; --border: #c03acb; --divider: #462c48; --name: #ebb8f0; --type: #cc4ed7; }
+.erd-table[data-color='red'] { --body: #322625; --border: #ce524a; --divider: #472f2e; --name: #edbebc; --type: #d25d56; }
+.erd-table[data-color='teal'] { --body: #232d2f; --border: #45c4cf; --divider: #29393c; --name: #b3e8ec; --type: #3ec3d0; }
+.erd-table[data-color='pink'] { --body: #31262c; --border: #e0558f; --divider: #482a39; --name: #f3bdd3; --type: #e0679a; }
+.erd-table[data-color='yellow'] { --body: #302f24; --border: #d9c43a; --divider: #46432a; --name: #f1e8b0; --type: #d9c53f; }
+.erd-table[data-color='indigo'] { --body: #26263a; --border: #7d7df0; --divider: #33335a; --name: #cfcff8; --type: #8585f0; }
+.erd-table[data-color='gray'] { --body: #2a2b2e; --border: #8d939c; --divider: #3a3c41; --name: #d5d8dd; --type: #9aa0aa; }
+
+[data-theme='eraser'] .erd-table {
+  --color-surface: var(--body);
+  --color-canvas: var(--body);
+  --color-row: var(--body);
+  --color-line: var(--divider);
+  --color-key: var(--name);
+  --color-ink: var(--type);
+  --color-muted: color-mix(in srgb, var(--name) 55%, var(--body));
+  color: var(--name);
+  border-color: var(--border);
+  border-radius: 8px;
+}
+[data-theme='eraser'] .erd-table[data-selected='true'] {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--border) 55%, transparent), 0 14px 30px -12px rgb(0 0 0 / 60%);
+}
+/* The icon moves from before the title to the far right; the colour menu sits just left of it. */
+[data-theme='eraser'] .erd-table .erd-icon { order: 5; }
+[data-theme='eraser'] .erd-table .erd-colors { order: 4; }
+/* Bare icon, as in Eraser: no box around it until it is hovered. */
+[data-theme='eraser'] .erd-table .erd-icon button { border-color: transparent; color: var(--name); }
+[data-theme='eraser'] .erd-table .erd-icon button:hover { border-color: var(--border); }
+[data-theme='eraser'] .erd-table .erd-title { font-weight: 500; font-size: 16px; }
+
+/*
  * Landing page ("/"). Two modes, white and midnight, set by data-mode on the .landing wrapper. These --l-* variables
  * are separate from the editor's theme tokens on purpose: the marketing page keeps its look whatever theme the
  * editor uses.
