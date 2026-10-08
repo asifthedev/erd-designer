@@ -119,3 +119,17 @@ describe('Vercel theme data types', () => {
     expect(contrast(pink!, themeTokens('vercel')['--color-row'])).toBeGreaterThanOrEqual(4.5)
   })
 })
+
+describe('table title and corners', () => {
+  it('Eraser shows a pure white title and icon', () => {
+    expect(css).toMatch(/\[data-theme='eraser'\] \.erd-table \.erd-title\s*\{[^}]*color:\s*#fff;/i)
+    expect(css).toMatch(/\[data-theme='eraser'\] \.erd-table \.erd-icon button\s*\{[^}]*color:\s*#fff;/i)
+  })
+
+  it('the title bar and last row use the inner radius (outer radius minus the line) in every theme', () => {
+    expect(css).toMatch(/\.erd-table\s*\{[^}]*--r:\s*8px;[^}]*--bw:\s*1px;/)
+    expect(css).toMatch(/\.erd-table \.erd-header\s*\{[^}]*calc\(var\(--r\) - var\(--bw\)\)/)
+    expect(css).toMatch(/\.erd-table \.erd-last\s*\{[^}]*calc\(var\(--r\) - var\(--bw\)\)/)
+    expect(css).toMatch(/\[data-theme='eraser'\] \.erd-table\s*\{[^}]*--bw:\s*2px;/) // only the line width differs
+  })
+})

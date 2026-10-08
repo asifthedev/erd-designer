@@ -484,6 +484,24 @@ body {
 .erd-table[data-color='indigo'] { --body: #26263a; --border: #7d7df0; --divider: #33335a; --name: #cfcff8; --type: #8585f0; }
 .erd-table[data-color='gray'] { --body: #2a2b2e; --border: #8d939c; --divider: #3a3c41; --name: #d5d8dd; --type: #9aa0aa; }
 
+/*
+ * Table card corners, all themes. The card has a rounded outline; the title bar and the last row sit inside it, so
+ * they take the INNER radius (outer radius minus the line width). With square corners they would stick out past the
+ * curve and cover the border there. A theme with a thicker line only changes --bw.
+ */
+.erd-table {
+  --r: 8px;
+  --bw: 1px;
+  border-radius: var(--r);
+  border-width: var(--bw);
+}
+.erd-table .erd-header {
+  border-radius: calc(var(--r) - var(--bw)) calc(var(--r) - var(--bw)) 0 0;
+}
+.erd-table .erd-last {
+  border-radius: 0 0 calc(var(--r) - var(--bw)) calc(var(--r) - var(--bw));
+}
+
 [data-theme='eraser'] .erd-table {
   --color-surface: var(--body);
   --color-canvas: var(--body);
@@ -493,29 +511,25 @@ body {
   --color-ink: var(--type);
   --color-muted: color-mix(in srgb, var(--name) 55%, var(--body));
   color: var(--name);
+  --bw: 2px;
   border-color: var(--border);
-  border-width: 2px;
-  border-radius: 8px;
 }
 [data-theme='eraser'] .erd-table[data-selected='true'] {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--border) 55%, transparent), 0 14px 30px -12px rgb(0 0 0 / 60%);
 }
-/*
- * Title bar in the canvas colour (#171717). The corners of the bar and of the last row follow the card's rounded border (8px minus its 2px
- * line), otherwise their square corners stick out past the curve and hide the border there.
- */
+/* Title bar in the canvas colour (#171717); its corners come from the generic rules above. */
 [data-theme='eraser'] .erd-table .erd-header {
   background: #171717;
-  border-radius: 6px 6px 0 0;
 }
-[data-theme='eraser'] .erd-table .erd-last { border-radius: 0 0 6px 6px; }
 /* The icon moves from before the title to the far right; the colour menu sits just left of it. */
 [data-theme='eraser'] .erd-table .erd-icon { order: 5; }
 [data-theme='eraser'] .erd-table .erd-colors { order: 4; }
 /* Bare icon, as in Eraser: no box around it until it is hovered. */
-[data-theme='eraser'] .erd-table .erd-icon button { border-color: transparent; color: var(--name); }
+[data-theme='eraser'] .erd-table .erd-icon button { border-color: transparent; color: #fff; }
+[data-theme='eraser'] .erd-table .erd-icon svg { width: 22px; height: 22px; }
 [data-theme='eraser'] .erd-table .erd-icon button:hover { border-color: var(--border); }
-[data-theme='eraser'] .erd-table .erd-title { font-weight: 500; font-size: 16px; }
+/* Pure white title, same size as in the other themes. */
+[data-theme='eraser'] .erd-table .erd-title { font-weight: 500; color: #fff; }
 
 /*
  * Landing page ("/"). Two modes, white and midnight, set by data-mode on the .landing wrapper. These --l-* variables

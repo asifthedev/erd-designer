@@ -232,7 +232,7 @@ function TableNodeView({ id, data, selected }: NodeProps<TableNodeType>) {
         </span>
         <input
           aria-label="Table name"
-          className={`erd-title ${inputBase} text-[18px] font-semibold`}
+          className={`erd-title ${inputBase} text-[20px] font-semibold`}
           // Monospace font, so the text is exactly `ch` per character wide; add the input's padding + border.
           style={{ width: `calc(${Math.max(data.name.length, 4)}ch + 1.1rem)` }}
           value={data.name}
