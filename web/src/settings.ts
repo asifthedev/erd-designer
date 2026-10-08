@@ -30,15 +30,28 @@ export const FONT_WEIGHTS = [
 ] as const
 export type FontWeight = (typeof FONT_WEIGHTS)[number]['value']
 
-export type Settings = { theme: ThemeId; tableFont: TableFontId; tableWeight: FontWeight }
+/** How relation lines are drawn. Orthogonal is the default; both keep the line on its columns and movable by hand. */
+export const EDGE_STYLES = [
+  { id: 'orthogonal', name: 'Orthogonal', note: 'Right-angle lines' },
+  { id: 'curved', name: 'Curved', note: 'Smooth, flowing curves' },
+] as const
+export type EdgeStyleId = (typeof EDGE_STYLES)[number]['id']
 
-/** The look the app has always had: Midnight, Google Sans Code, regular weight. */
-export const DEFAULT_SETTINGS: Settings = { theme: 'midnight', tableFont: 'google-sans-code', tableWeight: 400 }
+export type Settings = { theme: ThemeId; tableFont: TableFontId; tableWeight: FontWeight; edgeStyle: EdgeStyleId }
+
+/** The look the app has always had: Midnight, Google Sans Code, regular weight, orthogonal lines. */
+export const DEFAULT_SETTINGS: Settings = {
+  theme: 'midnight',
+  tableFont: 'google-sans-code',
+  tableWeight: 400,
+  edgeStyle: 'orthogonal',
+}
 
 type SettingsState = Settings & {
   setTheme: (theme: ThemeId) => void
   setTableFont: (tableFont: TableFontId) => void
   setTableWeight: (tableWeight: FontWeight) => void
+  setEdgeStyle: (edgeStyle: EdgeStyleId) => void
   reset: () => void
 }
 
@@ -49,6 +62,7 @@ export function sanitize(input: unknown): Settings {
     theme: THEMES.find((t) => t.id === v.theme)?.id ?? DEFAULT_SETTINGS.theme,
     tableFont: TABLE_FONTS.find((f) => f.id === v.tableFont)?.id ?? DEFAULT_SETTINGS.tableFont,
     tableWeight: FONT_WEIGHTS.find((w) => w.value === v.tableWeight)?.value ?? DEFAULT_SETTINGS.tableWeight,
+    edgeStyle: EDGE_STYLES.find((e) => e.id === v.edgeStyle)?.id ?? DEFAULT_SETTINGS.edgeStyle,
   }
 }
 
@@ -59,12 +73,13 @@ export const useSettings = create<SettingsState>()(
       setTheme: (theme) => set({ theme }),
       setTableFont: (tableFont) => set({ tableFont }),
       setTableWeight: (tableWeight) => set({ tableWeight }),
+      setEdgeStyle: (edgeStyle) => set({ edgeStyle }),
       reset: () => set(DEFAULT_SETTINGS),
     }),
     {
       name: 'erd-designer-settings',
       version: 1,
-      partialize: (s) => ({ theme: s.theme, tableFont: s.tableFont, tableWeight: s.tableWeight }),
+      partialize: (s) => ({ theme: s.theme, tableFont: s.tableFont, tableWeight: s.tableWeight, edgeStyle: s.edgeStyle }),
       merge: (persisted, current) => ({ ...current, ...sanitize(persisted) }),
     },
   ),

@@ -501,7 +501,7 @@ export const useStore = create<State>()(
       setRelationBend: (edgeId, bend) => {
         // A bend that is back at the default route is stored as "no bend".
         const moved = (n: number | undefined) => Math.abs(n ?? 0) >= 1
-        const value = bend && (moved(bend.x) || moved(bend.ys) || moved(bend.yt)) ? bend : undefined
+        const value = bend && (moved(bend.x) || moved(bend.ys) || moved(bend.yt) || moved(bend.cy)) ? bend : undefined
         if (edgeId.startsWith(M2M_PREFIX)) {
           const id = edgeId.slice(M2M_PREFIX.length)
           set((s) => ({ manyToMany: s.manyToMany.map((l) => (l.id === id ? { ...l, bend: value } : l)) }))

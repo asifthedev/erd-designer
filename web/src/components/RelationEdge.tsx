@@ -9,7 +9,8 @@ import {
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Bend } from '../core/model'
-import { routeParts, routePoints, type Dir, type Pt } from '../core/routing'
+import { curveGeometry, routeParts, routePoints, type Dir, type Pt } from '../core/routing'
+import { useSettings } from '../settings'
 import { useStore } from '../store'
 
 export type RelationKind = 'one-to-many' | 'one-to-one' | 'many-to-many'
@@ -31,8 +32,21 @@ const CORNER = 10 // radius of the rounded corners
 
 const dirOf = (p: Position): Dir => (p === Position.Right ? 1 : -1)
 
-/** Where the flip button sits: the middle of the vertical lane. */
-function midpoint(sx: number, sy: number, sPos: Position, tx: number, ty: number, tPos: Position, bend?: Bend) {
+/** Where the flip button sits: the middle of the vertical lane, or the middle point of a curve. */
+function midpoint(
+  curved: boolean,
+  sx: number,
+  sy: number,
+  sPos: Position,
+  tx: number,
+  ty: number,
+  tPos: Position,
+  bend?: Bend,
+) {
+  if (curved) {
+    const [x, y] = curveGeometry(sx, sy, dirOf(sPos), tx, ty, dirOf(tPos), bend).mid
+    return { x, y }
+  }
   const [top, bottom] = routeParts(sx, sy, dirOf(sPos), tx, ty, dirOf(tPos), bend).lane
   return { x: top[0], y: (top[1] + bottom[1]) / 2 }
 }
@@ -41,9 +55,9 @@ function midpoint(sx: number, sy: number, sPos: Position, tx: number, ty: number
 const polyline = (pts: Pt[]) => pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x},${y}`).join('')
 
 /** Which part of the line is being dragged, and so which way it can move. */
-type Part = 'source' | 'lane' | 'target'
-/** Double-headed arrows: ↔ for the vertical lane, ↕ for the two horizontal runs. */
-const CURSOR: Record<Part, string> = { source: 'ns-resize', lane: 'ew-resize', target: 'ns-resize' }
+type Part = 'source' | 'lane' | 'target' | 'curve'
+/** Double-headed arrows: ↔ for the vertical lane, ↕ for the two horizontal runs; a curve goes both ways (✥). */
+const CURSOR: Record<Part, string> = { source: 'ns-resize', lane: 'ew-resize', target: 'ns-resize', curve: 'move' }
 
 /** Polyline through `pts` with each corner rounded by up to `radius` (less on short segments). */
 function roundedPolyline(pts: [number, number][], radius: number): string {
@@ -118,12 +132,16 @@ export function RelationEdge(props: EdgeProps) {
   // While dragging, the shape lives here; it is saved once, when the pointer is released.
   const [liveBend, setLiveBend] = useState<Bend | null>(null)
   const bend = liveBend ?? savedBend
-  const path = relationPath(sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, bend)
+  const curved = useSettings((st) => st.edgeStyle) === 'curved'
+  const path = curved
+    ? curveGeometry(sourceX, sourceY, dirOf(sourcePosition), targetX, targetY, dirOf(targetPosition), bend).d
+    : relationPath(sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, bend)
   const [src, dst] = ENDS[kind]
   const stroke = lit ? 'var(--color-link)' : 'var(--color-edge)'
   const width = lit ? 2 : 1.5
   const dir = (p: Position) => (p === Position.Right ? 1 : -1) as 1 | -1
   const { x: midX, y: midY } = midpoint(
+    curved,
     sourceX,
     sourceY,
     sourcePosition,
@@ -134,8 +152,9 @@ export function RelationEdge(props: EdgeProps) {
   )
 
   /**
-   * Drag any part of the line. The vertical lane moves left / right, a horizontal run moves up / down; together
-   * they let the line be placed anywhere (around other lines or tables). The cursor shows which way it can go.
+   * Drag any part of the line. Orthogonal: the vertical lane moves left / right, a horizontal run up / down.
+   * Curved: the whole curve is pulled by its middle, any direction. Together that places the line anywhere (around
+   * other lines or tables); the cursor shows which way it can go.
    */
   const startDrag = (part: Part) => (e: ReactPointerEvent) => {
     if (e.button !== 0) return
@@ -152,10 +171,11 @@ export function RelationEdge(props: EdgeProps) {
       const dx = p.x - origin.x
       const dy = p.y - origin.y
       return {
-        x: Math.round(base.x + (part === 'lane' ? dx : 0)),
+        x: Math.round(base.x + (part === 'lane' || part === 'curve' ? dx : 0)),
         y: base.y,
         ys: Math.round((base.ys ?? 0) + (part === 'source' ? dy : 0)),
         yt: Math.round((base.yt ?? 0) + (part === 'target' ? dy : 0)),
+        cy: Math.round((base.cy ?? 0) + (part === 'curve' ? dy : 0)),
       }
     }
     const move = (ev: PointerEvent) => {
@@ -198,10 +218,10 @@ export function RelationEdge(props: EdgeProps) {
         interactionWidth={20}
       />
       {/* Wide invisible grab areas on top of the line, one per part (the lane last, so it wins at the corners). */}
-      {(['source', 'target', 'lane'] as const).map((part) => (
+      {(curved ? (['curve'] as const) : (['source', 'target', 'lane'] as const)).map((part) => (
         <path
           key={part}
-          d={polyline(parts[part])}
+          d={part === 'curve' ? path : polyline(parts[part])}
           fill="none"
           stroke="transparent"
           strokeWidth={22}
@@ -277,6 +297,9 @@ export function ConnectionLine(props: ConnectionLineComponentProps) {
     }
     toY = toHandle.y
   }
-  const path = relationPath(fromX, fromY, fromPosition, toX, toY, toPosition)
+  const curved = useSettings((st) => st.edgeStyle) === 'curved'
+  const path = curved
+    ? curveGeometry(fromX, fromY, dirOf(fromPosition), toX, toY, dirOf(toPosition)).d
+    : relationPath(fromX, fromY, fromPosition, toX, toY, toPosition)
   return <path d={path} fill="none" stroke="var(--color-key)" strokeWidth={2} />
 }

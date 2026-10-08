@@ -36,12 +36,13 @@ export const loginSchema = z.object({ email, password: z.string().min(1).max(128
 // that new optional fields don't break old clients.
 const action = z.enum(['CASCADE', 'SET NULL', 'RESTRICT', 'NO ACTION', 'SET DEFAULT'])
 
-/** Hand-dragged shape of a relation line: how far its lane (x) and its two horizontal runs (ys, yt) were moved. */
+/** Hand-dragged shape of a relation line: how far its lane (x), its two horizontal runs (ys, yt) and, for curved lines, its middle (cy) were moved. */
 const bend = z.object({
   x: z.number().finite(),
   y: z.number().finite(),
   ys: z.number().finite().optional(),
   yt: z.number().finite().optional(),
+  cy: z.number().finite().optional(),
 })
 
 const column = z.object({

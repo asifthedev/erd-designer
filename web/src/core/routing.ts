@@ -133,3 +133,49 @@ export function routePoints(
   const { source, lane, target } = routeParts(sx, sy, sDir, tx, ty, tDir, bend)
   return simplify([...source, ...lane.slice(1), ...target.slice(1)])
 }
+
+/** `x,y` rounded to 2 decimals, so the path text stays short and stable. */
+const n2 = (v: number) => Math.round(v * 100) / 100
+const at = ([x, y]: Pt) => `${n2(x)},${n2(y)}`
+
+/**
+ * The Curved line style. Same start and end as the orthogonal route (a short straight stub out of each table keeps
+ * the cardinality glyph clean), but between the stubs the line flows through one middle point M in smooth curves:
+ *  - tables side by side: an S-curve, level where it leaves, passes M and arrives (it never leaves the gap)
+ *  - tables stacked (both ends on the same side): a wide C-curve that bulges out beyond both, M at its outer edge
+ * M starts halfway and is moved by the drag: bend.x sideways, bend.cy up / down. Nothing else is stored.
+ */
+export function curveGeometry(
+  sx: number,
+  sy: number,
+  sDir: Dir,
+  tx: number,
+  ty: number,
+  tDir: Dir,
+  bend?: Bend,
+): { d: string; mid: Pt } {
+  const stub = stubLength(sx, sDir, tx, tDir)
+  const A: Pt = [sx + sDir * stub, sy]
+  const B: Pt = [tx + tDir * stub, ty]
+  const M: Pt = [routeX(sx, sDir, tx, ty, tDir, bend), (sy + ty) / 2 + (bend?.cy ?? 0)]
+  const head = `M${at([sx, sy])}L${at(A)}`
+  const tail = `L${at([tx, ty])}`
+
+  if (sDir !== tDir) {
+    // S-curves with a level tangent at A, M and B: control points sit halfway along x, at the height of their end.
+    const half = (p: Pt, q: Pt) => (p[0] + q[0]) / 2
+    const x1 = half(A, M)
+    const x2 = half(M, B)
+    return {
+      d: `${head}C${n2(x1)},${n2(A[1])} ${n2(x1)},${n2(M[1])} ${at(M)}C${n2(x2)},${n2(M[1])} ${n2(x2)},${n2(B[1])} ${at(B)}${tail}`,
+      mid: M,
+    }
+  }
+  // Same side: out to the lane, round its outer edge (vertical tangent at M), and back in.
+  const y1 = (A[1] + M[1]) / 2
+  const y2 = (M[1] + B[1]) / 2
+  return {
+    d: `${head}C${n2(M[0])},${n2(A[1])} ${n2(M[0])},${n2(y1)} ${at(M)}C${n2(M[0])},${n2(y2)} ${n2(M[0])},${n2(B[1])} ${at(B)}${tail}`,
+    mid: M,
+  }
+}

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_SETTINGS, FONT_WEIGHTS, sanitize, TABLE_FONTS, THEMES } from './settings'
+import { DEFAULT_SETTINGS, EDGE_STYLES, FONT_WEIGHTS, sanitize, TABLE_FONTS, THEMES } from './settings'
 
 const css = readFileSync(path.resolve(import.meta.dirname, 'index.css'), 'utf8')
 
@@ -11,7 +11,9 @@ const css = readFileSync(path.resolve(import.meta.dirname, 'index.css'), 'utf8')
 function themeTokens(id: string): Record<string, string> {
   const block = new RegExp(`\\[data-theme='${id}'\\]\\s*\\{([^}]*)\\}`).exec(css)
   if (!block) throw new Error(`index.css has no block for theme "${id}"`)
-  return Object.fromEntries([...block[1].matchAll(/(--[\w-]+|color-scheme):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]))
+  return Object.fromEntries(
+    [...block[1].matchAll(/(--[\w-]+|color-scheme):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]),
+  )
 }
 
 const luminance = (hex: string) => {
@@ -30,7 +32,12 @@ describe('themes', () => {
 
   it('has a block in index.css for every theme in the list, and the default matches the original @theme palette', () => {
     for (const t of THEMES) expect(() => themeTokens(t.id)).not.toThrow()
-    const base = Object.fromEntries([...css.split('@theme')[1].matchAll(/(--color-[\w-]+):\s*(#[0-9a-f]{3,8}|rgb\([^)]*\));/gi)].map((m) => [m[1], m[2]]))
+    const base = Object.fromEntries(
+      [...css.split('@theme')[1].matchAll(/(--color-[\w-]+):\s*(#[0-9a-f]{3,8}|rgb\([^)]*\));/gi)].map((m) => [
+        m[1],
+        m[2],
+      ]),
+    )
     for (const [token, value] of Object.entries(themeTokens('midnight'))) {
       if (token.startsWith('--')) expect(base[token], token).toBe(value) // (color-scheme is not an @theme token)
     }
@@ -68,13 +75,22 @@ describe('themes', () => {
 describe('table font settings', () => {
   it('offers JetBrains Mono and Google Sans Code, Light / Regular / Medium; the default is the original look', () => {
     expect(TABLE_FONTS.map((f) => f.name)).toEqual(['Google Sans Code', 'JetBrains Mono'])
-    expect(FONT_WEIGHTS.map((w) => [w.name, w.value])).toEqual([['Light', 300], ['Regular', 400], ['Medium', 500]])
-    expect(DEFAULT_SETTINGS).toEqual({ theme: 'midnight', tableFont: 'google-sans-code', tableWeight: 400 })
+    expect(FONT_WEIGHTS.map((w) => [w.name, w.value])).toEqual([
+      ['Light', 300],
+      ['Regular', 400],
+      ['Medium', 500],
+    ])
+    expect(DEFAULT_SETTINGS).toEqual({
+      theme: 'midnight',
+      tableFont: 'google-sans-code',
+      tableWeight: 400,
+      edgeStyle: 'orthogonal',
+    })
   })
 
   it('both fonts are bundled and support the weights that are offered (variable fonts)', () => {
-    expect(css).toContain("@fontsource-variable/google-sans-code")
-    expect(css).toContain("@fontsource-variable/jetbrains-mono")
+    expect(css).toContain('@fontsource-variable/google-sans-code')
+    expect(css).toContain('@fontsource-variable/jetbrains-mono')
     for (const pkg of ['google-sans-code', 'jetbrains-mono']) {
       const dir = path.dirname(createRequire(import.meta.url).resolve(`@fontsource-variable/${pkg}/package.json`))
       const faces = readFileSync(path.join(dir, 'index.css'), 'utf8').match(/font-weight:\s*(\d+) (\d+)/)!
@@ -92,15 +108,25 @@ describe('table font settings', () => {
 
 describe('sanitize', () => {
   it('keeps known values', () => {
-    expect(sanitize({ theme: 'dracula', tableFont: 'jetbrains-mono', tableWeight: 500 })).toEqual({
+    expect(sanitize({ theme: 'dracula', tableFont: 'jetbrains-mono', tableWeight: 500, edgeStyle: 'curved' })).toEqual({
       theme: 'dracula',
       tableFont: 'jetbrains-mono',
       tableWeight: 500,
+      edgeStyle: 'curved',
     })
   })
 
   it('falls back to the defaults for anything unknown, old or corrupted', () => {
-    for (const bad of [null, undefined, 'x', 42, [], {}, { theme: 'neon', tableFont: 'comic-sans', tableWeight: 900 }, { theme: {}, tableWeight: '500' }]) {
+    for (const bad of [
+      null,
+      undefined,
+      'x',
+      42,
+      [],
+      {},
+      { theme: 'neon', tableFont: 'comic-sans', tableWeight: 900 },
+      { theme: {}, tableWeight: '500' },
+    ]) {
       expect(sanitize(bad)).toEqual(DEFAULT_SETTINGS)
     }
     expect(sanitize({ theme: 'dracula', tableFont: 'nope' })).toEqual({ ...DEFAULT_SETTINGS, theme: 'dracula' })
@@ -131,5 +157,22 @@ describe('table title and corners', () => {
     expect(css).toMatch(/\.erd-table \.erd-header\s*\{[^}]*calc\(var\(--r\) - var\(--bw\)\)/)
     expect(css).toMatch(/\.erd-table \.erd-last\s*\{[^}]*calc\(var\(--r\) - var\(--bw\)\)/)
     expect(css).toMatch(/\[data-theme='eraser'\] \.erd-table\s*\{[^}]*--bw:\s*2px;/) // only the line width differs
+  })
+})
+
+describe('line style setting', () => {
+  it('offers Orthogonal (the default, as before) and Curved', () => {
+    expect(EDGE_STYLES.map((e) => e.id)).toEqual(['orthogonal', 'curved'])
+    expect(DEFAULT_SETTINGS.edgeStyle).toBe('orthogonal')
+  })
+
+  it('settings saved before the switch existed (no edgeStyle) keep working and get the default', () => {
+    expect(sanitize({ theme: 'warm', tableFont: 'jetbrains-mono', tableWeight: 300 }).edgeStyle).toBe('orthogonal')
+  })
+
+  it('an unknown line style falls back to the default', () => {
+    for (const bad of ['zigzag', 42, null, {}, 'CURVED'])
+      expect(sanitize({ edgeStyle: bad }).edgeStyle).toBe('orthogonal')
+    expect(sanitize({ edgeStyle: 'curved' }).edgeStyle).toBe('curved')
   })
 })

@@ -8,8 +8,11 @@ left sidebar) and open them on any device.
 
 The gear icon in the toolbar opens **Settings** (saved in this browser):
 
-- **Theme**: Midnight (default) or Dracula. The palettes are CSS tokens in
+- **Theme**: Midnight (default), Dracula, Vercel, Warm Dark or Eraser (coloured tables, with a colour menu per table). The palettes are CSS tokens in
   `web/src/index.css`; a test checks that every theme defines the full set and keeps text readable (WCAG contrast).
+- **Line style**: **Orthogonal** (default: right-angle lines; drag the vertical part left / right and the horizontal
+  parts up / down) or **Curved** (smooth, fluid curves; drag the curve by its middle in any direction). Both start and
+  end exactly on the columns, and every line keeps the shape it was dragged to.
 - **Table font**: Google Sans Code or JetBrains Mono, in **Light / Regular / Medium**. It only applies to the tables;
   the rest of the interface keeps its own font.
 

@@ -20,9 +20,10 @@ export type Point = { x: number; y: number }
  *  - x:  the vertical lane moved sideways
  *  - ys: the horizontal run on the source side moved up (negative) or down
  *  - yt: the horizontal run on the target side moved up or down
+ *  - cy: Curved lines only: the middle of the curve moved up (negative) or down (x moves it sideways)
  * (`y` is not used by the route any more; it is kept so lines saved earlier still load.)
  */
-export type Bend = Point & { ys?: number; yt?: number }
+export type Bend = Point & { ys?: number; yt?: number; cy?: number }
 
 export type Reference = {
   tableId: string

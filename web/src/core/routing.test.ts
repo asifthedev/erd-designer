@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { routeParts, routePoints, routeX, sidesForRects, simplify, STUB, stubLength, TURN, type Dir } from './routing'
+import {
+  curveGeometry,
+  routeParts,
+  routePoints,
+  routeX,
+  sidesForRects,
+  simplify,
+  STUB,
+  stubLength,
+  TURN,
+  type Dir,
+} from './routing'
 
 type Box = { left: number; right: number; top: number; bottom: number }
 
@@ -11,8 +22,7 @@ function rng(seed: number) {
   }
 }
 
-const overlaps2D = (a: Box, b: Box) =>
-  a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+const overlaps2D = (a: Box, b: Box) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
 
 /** Does the axis-aligned segment p->q pass through the inside of the box? (touching the border is fine) */
 function cuts(box: Box, [x1, y1]: [number, number], [x2, y2]: [number, number]) {
@@ -107,7 +117,8 @@ describe('routePoints', () => {
     // brackets too, and the path stays orthogonal (every step is horizontal or vertical)
     const pts = routePoints(680, 100, 1, 380, 500, 1, { x: -200, y: 0 })
     expect(pts.map((p) => p[0])).toEqual([680, 680 + STUB + TURN - 200, 680 + STUB + TURN - 200, 380])
-    for (let k = 0; k + 1 < pts.length; k++) expect(pts[k][0] === pts[k + 1][0] || pts[k][1] === pts[k + 1][1]).toBe(true)
+    for (let k = 0; k + 1 < pts.length; k++)
+      expect(pts[k][0] === pts[k + 1][0] || pts[k][1] === pts[k + 1][1]).toBe(true)
   })
 })
 
@@ -145,7 +156,11 @@ describe('moving the parts of a line', () => {
   })
 
   it('a line always starts and ends exactly on its columns, however it is moved', () => {
-    for (const bend of [{ x: 90, y: 0, ys: -200, yt: 300 }, { x: -400, y: 0, ys: 80, yt: -80 }, { x: 0, y: 0 }]) {
+    for (const bend of [
+      { x: 90, y: 0, ys: -200, yt: 300 },
+      { x: -400, y: 0, ys: 80, yt: -80 },
+      { x: 0, y: 0 },
+    ]) {
       const pts = routePoints(...args, bend)
       expect(pts[0]).toEqual([680, 100])
       expect(pts[pts.length - 1]).toEqual([1000, 500])
@@ -154,7 +169,11 @@ describe('moving the parts of a line', () => {
 
   it('every piece stays horizontal or vertical (orthogonal lines)', () => {
     for (const bend of [undefined, { x: 60, y: 0, ys: -75, yt: 40 }, { x: -300, y: 0, ys: 200, yt: -150 }]) {
-      for (const dirs of [[1, -1], [1, 1], [-1, -1]] as const) {
+      for (const dirs of [
+        [1, -1],
+        [1, 1],
+        [-1, -1],
+      ] as const) {
         const pts = routePoints(500, 100, dirs[0], 900, 420, dirs[1], bend)
         for (let i = 1; i < pts.length; i++) {
           const same = pts[i][0] === pts[i - 1][0] || pts[i][1] === pts[i - 1][1]
@@ -194,5 +213,54 @@ describe('moving the parts of a line', () => {
       [10, 9],
       [20, 9],
     ])
+  })
+})
+
+describe('curved line style', () => {
+  type Args = readonly [number, number, Dir, number, number, Dir]
+  const across: Args = [680, 100, 1, 1000, 500, -1] // tables side by side
+  const bracket: Args = [680, 100, 1, 600, 500, 1] // both lines leave the right side (stacked tables)
+  const nums = (d: string) => (d.match(/-?\d+(\.\d+)?/g) ?? []).map(Number)
+
+  it('starts and ends exactly on the columns, with a straight stub at each end', () => {
+    for (const args of [across, bracket]) {
+      const { d } = curveGeometry(...args)
+      expect(d.startsWith(`M${args[0]},${args[1]}L`)).toBe(true)
+      expect(d.endsWith(`L${args[3]},${args[4]}`)).toBe(true)
+      expect(d).not.toMatch(/NaN|undefined/)
+    }
+    const stub = STUB
+    expect(curveGeometry(...across).d.startsWith(`M680,100L${680 + stub},100C`)).toBe(true)
+  })
+
+  it('goes through its middle point, which starts halfway and follows the drag (x sideways, cy up / down)', () => {
+    const base = curveGeometry(...across).mid
+    expect(base[1]).toBe(300) // halfway between the two heights
+    expect(curveGeometry(...across, { x: 40, y: 0 }).mid).toEqual([base[0] + 40, 300])
+    expect(curveGeometry(...across, { x: 0, y: 0, cy: -70 }).mid).toEqual([base[0], 230])
+    expect(curveGeometry(...across, { x: 0, y: 0, cy: -70 }).d).toContain(`${base[0]},230`)
+  })
+
+  it('stays inside the gap between the tables until it is dragged out', () => {
+    const xs = nums(curveGeometry(...across).d).filter((_, i) => i % 2 === 0)
+    for (const x of xs) {
+      expect(x).toBeGreaterThanOrEqual(680)
+      expect(x).toBeLessThanOrEqual(1000)
+    }
+  })
+
+  it('stacked tables get a C-curve that bulges out beyond both, with its outer edge at the lane', () => {
+    const { d, mid } = curveGeometry(...bracket)
+    expect(mid[0]).toBe(routeX(680, 1, 600, 500, 1)) // the same lane as the orthogonal line
+    expect(mid[0]).toBeGreaterThan(680)
+    expect(nums(d).every((v) => v <= mid[0])).toBe(true)
+  })
+
+  it('the up / down offsets of the orthogonal style (ys, yt) do not change a curve', () => {
+    expect(curveGeometry(...across, { x: 0, y: 0, ys: -90, yt: 60 })).toEqual(curveGeometry(...across))
+  })
+
+  it('and the curve offset (cy) does not change an orthogonal line', () => {
+    expect(routePoints(...across, { x: 0, y: 0, cy: 80 })).toEqual(routePoints(...across))
   })
 })

@@ -4,10 +4,12 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useCloseOnOutsidePointer } from '../hooks/useCloseOnOutsidePointer'
 import {
   DEFAULT_SETTINGS,
+  EDGE_STYLES,
   FONT_WEIGHTS,
   TABLE_FONTS,
   THEMES,
   useSettings,
+  type EdgeStyleId,
   type ThemeId,
 } from '../settings'
 
@@ -47,6 +49,22 @@ function ThemeCard({ id, name, note, active }: { id: ThemeId; name: string; note
   )
 }
 
+/** Tiny drawing of each line style for the switch: two tables joined by a line, with the style's own shape. */
+function StylePreview({ id }: { id: EdgeStyleId }) {
+  return (
+    <svg viewBox="0 0 96 40" className="mb-1.5 h-9 w-full" fill="none" aria-hidden>
+      <rect x="2" y="5" width="22" height="10" rx="2.5" className="fill-row stroke-edge" strokeWidth="1" />
+      <rect x="72" y="25" width="22" height="10" rx="2.5" className="fill-row stroke-edge" strokeWidth="1" />
+      <path
+        d={id === 'orthogonal' ? 'M24 10H48V30H72' : 'M24 10C48 10 48 30 72 30'}
+        className="stroke-key"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 const segment = (active: boolean) =>
   `cursor-pointer rounded-sm border px-2 py-1.5 text-center outline-none focus-visible:ring-2 focus-visible:ring-key ${
     active ? 'border-key bg-key/15 text-key' : 'border-line text-ink hover:border-edge hover:bg-hover'
@@ -54,13 +72,14 @@ const segment = (active: boolean) =>
 
 /** Toolbar button + popover with the look settings: theme, and the font / weight used inside the tables. */
 export function SettingsMenu() {
-  const { theme, tableFont, tableWeight, setTableFont, setTableWeight, reset } = useSettings()
+  const { theme, tableFont, tableWeight, edgeStyle, setTableFont, setTableWeight, setEdgeStyle, reset } = useSettings()
   const [open, setOpen] = useState(false)
   useCloseOnOutsidePointer(open, () => setOpen(false)) // a click on the canvas (or anywhere else) closes the menu
   const isDefault =
     theme === DEFAULT_SETTINGS.theme &&
     tableFont === DEFAULT_SETTINGS.tableFont &&
-    tableWeight === DEFAULT_SETTINGS.tableWeight
+    tableWeight === DEFAULT_SETTINGS.tableWeight &&
+    edgeStyle === DEFAULT_SETTINGS.edgeStyle
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -93,6 +112,25 @@ export function SettingsMenu() {
           <div className="grid grid-cols-2 gap-2">
             {THEMES.map((t) => (
               <ThemeCard key={t.id} id={t.id} name={t.name} note={t.note} active={theme === t.id} />
+            ))}
+          </div>
+        </section>
+
+        <section className="mt-4">
+          <h3 className={heading}>Line style</h3>
+          <div className="grid grid-cols-2 gap-2" role="group" aria-label="Relation line style">
+            {EDGE_STYLES.map((e) => (
+              <button
+                key={e.id}
+                type="button"
+                aria-pressed={edgeStyle === e.id}
+                onClick={() => setEdgeStyle(e.id)}
+                className={`${segment(edgeStyle === e.id)} text-left`}
+              >
+                <StylePreview id={e.id} />
+                <span className="block text-[13px] font-medium">{e.name}</span>
+                <span className="block truncate text-[11px] text-muted">{e.note}</span>
+              </button>
             ))}
           </div>
         </section>
