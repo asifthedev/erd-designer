@@ -1,8 +1,9 @@
 import { applyNodeChanges, type Connection, type Edge, type Node, type NodeChange } from '@xyflow/react'
-import { toast } from 'sonner'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { refusedProblem, removedProblem, type Problem } from './core/problems'
 import { checkRelations, isInvalid, type RelationIssue } from './core/relations'
+import { showNote, showProblem } from './components/problemToast'
 import { sidesForRects, type Side } from './core/routing'
 import {
   isOneToOne,
@@ -55,8 +56,8 @@ type State = {
   pendingM2m: string | null
   /** Columns currently blinking red because a relation was refused or broken. */
   flashing: string[]
-  /** Show a warning toast (stays until the user closes it) and optionally blink these columns red. */
-  notify: (text: string, columnIds?: string[]) => void
+  /** Shows a problem as a toast and blinks the columns involved. `warning` is for things that need attention. */
+  notify: (problem: Problem, columnIds?: string[], kind?: 'error' | 'warning') => void
   /** Tables copied or cut, with their canvas positions. Not persisted. */
   clipboard: { table: Table; position: { x: number; y: number } }[] | null
   /** How many times the current clipboard was pasted (each paste is nudged further). */
@@ -271,9 +272,8 @@ function purgeInvalid(
   }
 }
 
-function announceRemoved(notify: (text: string, columnIds?: string[]) => void, removed: RelationIssue[]) {
-  for (const i of removed)
-    notify(`Relation removed: ${i.label}: ${i.message}`, [i.columnId, i.targetColumnId])
+function announceRemoved(notify: State['notify'], removed: RelationIssue[]) {
+  for (const i of removed) notify(removedProblem(i), [i.columnId, i.targetColumnId], 'warning')
 }
 
 function pruneReferences(nodes: TableNodeType[]): TableNodeType[] {
@@ -367,13 +367,9 @@ export const useStore = create<State>()(
         announceRemoved(get().notify, removed)
       },
 
-      notify: (text, columnIds = []) => {
-        // Same text = same toast id, so repeating a mistake updates the toast instead of stacking copies.
-        // It stays until the user closes it (duration: Infinity).
-        // "Title: details" reads as a bold title with the rest underneath.
-        const cut = text.indexOf(': ')
-        const [title, description] = cut > 0 ? [text.slice(0, cut), text.slice(cut + 2)] : [text, undefined]
-        toast.error(title, { id: text, description, duration: Infinity, closeButton: true })
+      notify: (problem, columnIds = [], kind = 'error') => {
+        // The toast id comes from the content, so repeating a mistake updates the toast instead of stacking copies.
+        showProblem(problem, kind)
         if (!columnIds.length) return
         set({ flashing: columnIds })
         // Only clear if nothing newer started blinking in the meantime.
@@ -479,7 +475,7 @@ export const useStore = create<State>()(
           (i) => isInvalid(i) && i.columnId === sourceCol && i.targetColumnId === targetCol,
         )
         if (refused) {
-          get().notify(`Relation not created: ${refused.label}: ${refused.message}`, [from.id, to.id])
+          get().notify(refusedProblem(refused), [from.id, to.id])
           return
         }
 
@@ -558,9 +554,17 @@ export const useStore = create<State>()(
 
         const label = `${child.name}.${col.name} → ${parent.name}`
         const childPk = pkOf(child)
-        const refuse = (why: string) => get().notify(`Can't flip ${label}: ${why}`, [col.id, ref.columnId])
-        if (col.primaryKey) return refuse(`${col.name} is part of ${child.name}'s primary key`)
-        if (!childPk) return refuse(`${child.name} needs a single-column primary key to be referenced`)
+        const refuse = (reason: string, fix: string) =>
+          get().notify({ title: "Can't flip this relation", where: label, reason, fix }, [col.id, ref.columnId])
+        if (col.primaryKey) {
+          return refuse(`${col.name} is part of the primary key of ${child.name}.`, 'Only a regular foreign key column can be flipped.')
+        }
+        if (!childPk) {
+          return refuse(
+            `${child.name} has no single primary key column for the other table to point to.`,
+            `Give ${child.name} one primary key column first.`,
+          )
+        }
 
         // The new foreign key lives on the old parent, named after the old child (users -> user_id).
         const taken = new Set(parent.columns.map((c) => c.name))
@@ -592,12 +596,14 @@ export const useStore = create<State>()(
           ),
           selectedEdgeId: `${parent.id}:${moved.id}`,
         }))
-        toast.success(`Relation flipped: ${parent.name}.${name} → ${child.name}.${childPk.name}`, {
-          id: `flip-${col.id}`,
-          description: `${child.name}.${col.name} was removed; ${parent.name}.${name} now holds the foreign key.`,
-          duration: Infinity,
-          closeButton: true,
-        })
+        showNote(
+          {
+            title: 'Relation flipped',
+            where: `${parent.name}.${name} → ${child.name}.${childPk.name}`,
+            reason: `${child.name}.${col.name} was removed, and ${parent.name}.${name} now holds the foreign key.`,
+          },
+          `flip-${col.id}`,
+        )
       },
 
       pickManyToMany: (tableId) =>

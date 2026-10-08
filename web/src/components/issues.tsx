@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { explainIssue } from '../core/problems'
 import { checkRelations, type RelationIssue } from '../core/relations'
 import { toDiagram, useStore } from '../store'
 import { IssuesContext } from './issuesContext'
@@ -41,7 +42,7 @@ function IssueToasts({ issues }: { issues: RelationIssue[] }) {
     seen.current = keys
     if (previous === null) return
     for (const i of issues) {
-      if (!previous.has(issueKey(i))) notify(`${i.label}: ${i.message}`)
+      if (!previous.has(issueKey(i))) notify(explainIssue(i), [], 'warning')
     }
   }, [issues, notify])
 

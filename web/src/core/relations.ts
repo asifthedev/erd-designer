@@ -13,6 +13,15 @@ export type RelationIssue = {
   /** `users.id → posts.user_id`, for display. */
   label: string
   message: string
+  /** The plain names and SQL types behind the issue, for friendly messages (see problems.ts). */
+  names: {
+    table: string
+    column: string
+    columnType: string
+    targetTable: string
+    targetColumn: string
+    targetColumnType: string
+  }
 }
 
 const typeLabel = (t: ResolvedType) => t.scalar + (t.array ? '[]' : '')
@@ -26,11 +35,7 @@ export function typeMismatch(a: ResolvedType, b: ResolvedType, provider: Provide
   if (a.scalar !== b.scalar || a.array !== b.array) {
     return `column types differ (${typeLabel(a)} vs ${typeLabel(b)})`
   }
-  if (
-    provider === 'mysql' &&
-    (a.scalar === 'Int' || a.scalar === 'BigInt') &&
-    (a.native ?? '') !== (b.native ?? '')
-  ) {
+  if (provider === 'mysql' && (a.scalar === 'Int' || a.scalar === 'BigInt') && (a.native ?? '') !== (b.native ?? '')) {
     return `MySQL needs identical integer types (${a.native ?? 'Int'} vs ${b.native ?? 'Int'})`
   }
   return null
@@ -60,6 +65,14 @@ export function checkRelations(diagram: Diagram): RelationIssue[] {
         targetTableId: target.id,
         targetColumnId: targetCol.id,
         label: `${table.name}.${col.name} → ${target.name}.${targetCol.name}`,
+        names: {
+          table: table.name,
+          column: col.name,
+          columnType: col.type,
+          targetTable: target.name,
+          targetColumn: targetCol.name,
+          targetColumnType: targetCol.type,
+        },
       }
 
       const mismatch = sqlTypeMismatch(col.type, targetCol.type, diagram.provider)

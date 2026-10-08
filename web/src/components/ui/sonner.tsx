@@ -10,7 +10,7 @@ import { Toaster as Sonner, type ToasterProps } from "sonner"
 function Badge({ color, children }: { color: string; children: ReactNode }) {
   return (
     <span
-      className="grid size-[18px] shrink-0 place-items-center rounded-full text-canvas"
+      className="grid size-[22px] shrink-0 place-items-center rounded-full text-canvas"
       style={{ background: color }}
     >
       {children}
@@ -26,22 +26,22 @@ const Toaster = ({ ...props }: ToasterProps) => {
       icons={{
         success: (
           <Badge color="var(--color-link)">
-            <CheckIcon size={12} strokeWidth={3.5} />
+            <CheckIcon size={14} strokeWidth={3.5} />
           </Badge>
         ),
         info: (
           <Badge color="var(--color-key)">
-            <InfoIcon size={12} strokeWidth={3} />
+            <InfoIcon size={14} strokeWidth={3} />
           </Badge>
         ),
         warning: (
           <Badge color="var(--color-warning)">
-            <TriangleAlertIcon size={11} strokeWidth={3} />
+            <TriangleAlertIcon size={13} strokeWidth={3} />
           </Badge>
         ),
         error: (
           <Badge color="var(--color-danger)">
-            <XIcon size={12} strokeWidth={3.5} />
+            <XIcon size={14} strokeWidth={3.5} />
           </Badge>
         ),
         loading: <Loader2Icon className="size-4 animate-spin" />,
@@ -52,6 +52,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--normal-text": "var(--color-popover-foreground)",
           "--normal-border": "var(--color-border)",
           "--border-radius": "14px",
+          // Wide enough for a whole sentence on one or two lines (Sonner's default is 356px).
+          "--width": "min(480px, calc(100vw - 32px))",
         } as React.CSSProperties
       }
       {...props}

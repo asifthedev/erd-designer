@@ -225,8 +225,12 @@ body {
 }
 
 /*
- * Toasts: a rounded card on the dark surface. The right side carries a soft wash of the message's colour
- * that fades out towards the left; the status icon is a filled round badge.
+ * Toasts: a rounded card on the dark surface, wide enough for one sentence per line. The left edge carries a stripe
+ * in the message's colour (red = something failed, orange = needs attention, green = done) and the right side a soft
+ * wash of it. Messages about relations use the same three parts every time (see problems.ts):
+ *   .problem-where   the columns involved, as a small code chip
+ *   .problem-reason  one sentence on why
+ *   .problem-fix     one line on what to do next
  */
 [data-sonner-toaster] [data-sonner-toast] {
   --tone: var(--color-edge);
@@ -235,9 +239,11 @@ body {
   --toast-close-button-transform: none;
   isolation: isolate;
   overflow: hidden;
-  padding: 14px 48px 14px 16px;
+  padding: 16px 52px 16px 20px;
+  gap: 12px;
   align-items: flex-start !important;
-  box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+  /* !important: Sonner's own stylesheet loads later and would otherwise drop the coloured stripe. */
+  box-shadow: inset 4px 0 0 var(--tone), 0 14px 36px rgb(0 0 0 / 50%) !important;
 }
 
 [data-sonner-toast][data-type='success'] {
@@ -266,17 +272,19 @@ body {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: linear-gradient(90deg, transparent 35%, color-mix(in srgb, var(--tone) 18%, transparent));
+  background: linear-gradient(90deg, transparent 35%, color-mix(in srgb, var(--tone) 16%, transparent));
 }
 
 [data-sonner-toast] [data-title] {
-  font-size: 14.5px;
+  font-size: 15.5px;
   font-weight: 600;
+  line-height: 22px;
 }
 
 [data-sonner-toast] [data-description] {
-  color: var(--color-muted-foreground);
-  font-size: 13.5px;
+  color: var(--color-ink);
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 [data-sonner-toast] [data-close-button] {
@@ -284,9 +292,9 @@ body {
   left: auto !important;
   right: 12px !important;
   transform: none !important;
-  top: 17px !important;
-  width: 24px;
-  height: 24px;
+  top: 15px !important;
+  width: 26px;
+  height: 26px;
   border: 0;
   border-radius: 8px;
   background: var(--color-hover);
@@ -301,18 +309,60 @@ body {
 /* Icon and close button sit on the first line (the title), not centred on the whole card. */
 [data-sonner-toast] [data-icon] {
   align-self: flex-start !important;
-  margin-top: 3px !important;
-  height: 20px;
+  margin: 0 !important;
+  /* Sonner makes the icon box 16px wide; our round badge is 22px. */
+  width: 22px !important;
+  height: 22px !important;
   align-items: center;
-}
-
-[data-sonner-toast] [data-title] {
-  line-height: 20px;
+  justify-content: center !important;
 }
 
 /* Keep long titles from running under the close button. */
 [data-sonner-toast] [data-content] {
   padding-right: 32px;
+  gap: 2px;
+}
+
+.problem {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.problem-where {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 3px 9px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--tone) 15%, transparent);
+  color: color-mix(in srgb, var(--tone) 60%, var(--color-ink));
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.problem-reason,
+.problem-fix {
+  margin: 0;
+}
+
+.problem-fix {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  color: var(--color-muted-foreground);
+  font-size: 13.5px;
+}
+
+.problem-fix > span {
+  flex-shrink: 0;
+  color: var(--tone);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 /*
