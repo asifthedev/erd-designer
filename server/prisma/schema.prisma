@@ -21,8 +21,14 @@ model User {
   preferencesUpdatedAt DateTime? @map("preferences_updated_at")
   createdAt            DateTime  @default(now()) @map("created_at")
 
+  /// The plan the account is on (see Plan). A monthly plan stops at planExpiresAt and the account falls back to free.
+  planId        String    @default("free") @map("plan_id")
+  planExpiresAt DateTime? @map("plan_expires_at")
+
+  plan     Plan      @relation(fields: [planId], references: [id])
   sessions Session[]
   diagrams Diagram[]
+  orders   Order[]
 
   @@map("erd_users")
 }
@@ -86,4 +92,81 @@ model EmailCode {
   @@index([email, purpose, createdAt])
   @@index([expiresAt])
   @@map("erd_email_codes")
+}
+
+/// What an account may do. The three rows (free, monthly, lifetime) are created by a migration; the admin panel
+/// edits their prices, limits, features and the lines shown on the pricing page. The ids are used by the code.
+model Plan {
+  id          String @id
+  name        String
+  /// How it is bought: free (nothing), monthly (renews by hand, ends at planExpiresAt), lifetime (once).
+  kind        String
+  description String @default("")
+  /// In the smallest unit of `currency` (cents), so there is no floating point money.
+  priceCents  Int    @default(0) @map("price_cents")
+  currency    String @default("USD")
+
+  maxDiagrams         Int      @map("max_diagrams")
+  maxTablesPerDiagram Int      @map("max_tables_per_diagram")
+  /// Paid features this plan includes: { export, codeFormats, themes, localCopy, setup } -> true / false.
+  features            Json     @default("{}")
+  /// The bullet lines shown for this plan on the pricing page.
+  highlights          Json     @default("[]")
+  active              Boolean  @default(true)
+  sortOrder           Int      @default(0) @map("sort_order")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  users  User[]
+  orders Order[]
+
+  @@map("erd_plans")
+}
+
+/// A purchase request. Nothing is charged by the app: the buyer pays the way the payment instructions say, and the
+/// admin marks the order paid, which activates the plan on the account.
+model Order {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  planId      String    @map("plan_id")
+  /// pending (waiting for payment), paid, or cancelled.
+  status      String    @default("pending")
+  /// The price at the time of ordering, so a later price change does not alter an open order.
+  amountCents Int       @map("amount_cents")
+  currency    String
+  /// How to reach the buyer (phone / WhatsApp), mostly for setting up a lifetime copy.
+  contact     String    @default("")
+  /// The buyer's payment reference (transaction id, name on the transfer...) so the admin can match the payment.
+  reference   String    @default("")
+  adminNote   String    @default("") @map("admin_note")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  paidAt      DateTime? @map("paid_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan Plan @relation(fields: [planId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("erd_orders")
+}
+
+/// Small admin-edited texts, e.g. the payment instructions shown at checkout.
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("erd_settings")
+}
+
+/// Sessions of the admin panel. Admins are not users: they are set by environment variables, and these sessions are
+/// separate from the website's (own cookie, own table, short life).
+model AdminSession {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique @map("token_hash")
+  email     String
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([expiresAt])
+  @@map("erd_admin_sessions")
 }

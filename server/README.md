@@ -21,10 +21,14 @@ npm run dev                   # http://127.0.0.1:3001 (watch mode)
 | POST | `/api/auth/logout` | 204, ends the session |
 | GET | `/api/auth/me` | `{ user }` or `{ user: null }` |
 | GET | `/api/diagrams` | the signed-in user's ERDs: `{ diagrams: [{ id, title, updatedAt }] }`, oldest first (no content) |
-| POST | `/api/diagrams` | `{ title?, data? }` → 201 `{ diagram }`; blank and "Untitled diagram" by default. Over the plan's limit → 403 `{ error, code: "plan_limit" }` (Free plan: 1 diagram, set by `FREE_PLAN_MAX_DIAGRAMS`); hard cap 50 per user (409) |
+| POST | `/api/diagrams` | `{ title?, data? }` → 201 `{ diagram }`; blank and "Untitled diagram" by default. Over the plan's limit → 403 `{ error, code: "plan_limit" }` (the plan's `maxDiagrams`, Free: 1); a plan's `maxTablesPerDiagram` is enforced on save too (403 `plan_limit_tables`); hard cap 50 per user (409) |
 | GET | `/api/diagrams/:id` | one ERD with its content: `{ diagram: { id, title, updatedAt, data } }` |
 | PUT | `/api/diagrams/:id` | `{ title?, data? }` (at least one): rename and/or save the validated workspace |
 | DELETE | `/api/diagrams/:id` | 204 |
+| GET | `/api/plans` | public: the plans on offer (prices, limits, features, highlight lines) |
+| GET | `/api/plans/mine` | the signed-in user's plan now: `{ plan: { ..., expiresAt } }` |
+| GET / POST | `/api/orders` | list the user's orders and the payment instructions / place an order `{ planId, contact? }` (asking again for a plan with an open order returns it) |
+| PUT / POST | `/api/orders/:id`, `/api/orders/:id/cancel` | add the payment reference, or cancel a pending order |
 | GET | `/api/health` | `{ ok: true }` (no database access) |
 
 Errors are `{ error, field? }`; limits return `429` with `RateLimit-*` headers.
@@ -56,6 +60,14 @@ prisma/             schema.prisma + migrations
 | `TRUST_PROXY` | `0` | `1` behind a reverse proxy (automatic on Vercel) |
 | `SMTP_URL` | none | SMTP connection URL for the emails, e.g. `smtps://user:password@smtp.example.com:465` |
 | `MAIL_FROM` | none | From header, e.g. `erd.designer <no-reply@example.com>` |
+| `ADMIN_EMAIL` | none | The admin panel's login email. Without it and `ADMIN_PASSWORD_HASH`, `/admin` answers "not set up" (503) |
+| `ADMIN_PASSWORD_HASH` | none | scrypt hash of the admin password: run `npm run admin:hash -w server` (the password is never stored). Single-quote it in a `.env`, it contains `$` |
+
+### Plans, orders and the admin panel
+
+- **Plans** live in `erd_plans` (seeded by the migration: Free 1 diagram / 25 tables, Pro monthly 5 / 100, Lifetime) and are edited in the admin panel: name, price, currency, limits (hard caps 50 diagrams / 300 tables), the feature switches (`export`, `codeFormats`, `themes`, `localCopy`, `setup`) and the card text. Limits are enforced by the API; the paid features are gated in the web UI only.
+- **Orders** are manual: no payment gateway. A buyer places an order (the price is copied onto it), pays as the admin's payment instructions say, and the admin marks it paid. That starts the plan in one transaction: a monthly plan adds a calendar month (renewing early extends from the current end), a lifetime plan never ends. A lapsed monthly plan counts as Free.
+- **Admin** (`/admin`, API `/api/admin/*`): its own login and cookie (`__Host-erd_admin` in production), 12 h sessions, strict rate limits, one error message for a wrong email or password. It shows the numbers, edits plans and prices, lists the registered users (and can put one on a plan by hand), confirms or cancels orders, and edits the payment instructions.
 
 ### Email codes
 

@@ -4,13 +4,30 @@ import { toWorkspace, useStore, type Workspace } from '../store'
 type Row = { id: string; title: string; data: Workspace; updatedAt: string }
 
 // An in-memory stand-in for the server, recording every call so tests can check ORDER (e.g. save before switch).
+/** The plan the stand-in server reports: Free, with the limits the test wants. */
+function planWith(maxDiagrams: number, maxTablesPerDiagram = 25) {
+  return {
+    id: 'free',
+    name: 'Free',
+    kind: 'free' as const,
+    description: '',
+    priceCents: 0,
+    currency: 'USD',
+    maxDiagrams,
+    maxTablesPerDiagram,
+    features: { export: false, codeFormats: false, themes: false, localCopy: false, setup: false },
+    highlights: [],
+    sortOrder: 0,
+    expiresAt: null,
+  }
+}
 const server = {
   rows: new Map<string, Row>(),
   calls: [] as string[],
   failNext: new Set<string>(),
   clock: 0,
   seq: 0,
-  plan: { name: 'free', maxDiagrams: 50 },
+  plan: planWith(50),
 }
 const stamp = () => new Date(2026, 0, 1, 0, 0, ++server.clock).toISOString()
 
@@ -96,7 +113,7 @@ beforeEach(() => {
   server.failNext.clear()
   server.clock = 0
   server.seq = 0
-  server.plan = { name: 'free', maxDiagrams: 50 }
+  server.plan = planWith(50)
   vi.mocked(showProblem).mockClear()
   useStore.getState().loadSample()
   useAuth.setState({ status: 'loading', user: null, ready: false, save: 'idle', diagrams: [], currentId: null, switching: false, loading: null })
@@ -390,13 +407,13 @@ const snapshotNames = () => toWorkspace(useStore.getState()).nodes.map((n) => n.
 
 describe('Free plan limit', () => {
   it('uses the plan the server reports (and shows it in the store)', async () => {
-    server.plan = { name: 'free', maxDiagrams: 1 }
+    server.plan = planWith(1)
     await signIn()
-    expect(useAuth.getState().plan).toEqual({ name: 'free', maxDiagrams: 1 })
+    expect(useAuth.getState().plan).toMatchObject({ name: 'Free', maxDiagrams: 1 })
   })
 
   it('at the limit, a second diagram is not asked for: the upgrade note is shown instead and nothing changes', async () => {
-    server.plan = { name: 'free', maxDiagrams: 1 }
+    server.plan = planWith(1)
     await signIn() // the account gets its first diagram
     const before = useAuth.getState()
     server.calls = []
@@ -410,9 +427,9 @@ describe('Free plan limit', () => {
   })
 
   it('shows the same note when the server is the one that refuses (e.g. the plan changed in another tab)', async () => {
-    server.plan = { name: 'free', maxDiagrams: 1 }
+    server.plan = planWith(1)
     await signIn()
-    useAuth.setState({ plan: { name: 'free', maxDiagrams: 5 } }) // this tab still believes the old, bigger limit
+    useAuth.setState({ plan: planWith(5) }) // this tab still believes the old, bigger limit
     expect(await useAuth.getState().createDiagram()).toBeNull()
     expect(server.calls).toContain('POST /diagrams') // it did ask ...
     expect(showProblem).toHaveBeenCalledWith(planLimitProblem(5), 'warning') // ... and explained when told no
@@ -421,7 +438,7 @@ describe('Free plan limit', () => {
   })
 
   it('still creates diagrams while there is room', async () => {
-    server.plan = { name: 'free', maxDiagrams: 2 }
+    server.plan = planWith(2)
     await signIn()
     expect(await useAuth.getState().createDiagram()).not.toBeNull()
     expect(useAuth.getState().diagrams).toHaveLength(2)

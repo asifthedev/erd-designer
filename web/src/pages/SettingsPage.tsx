@@ -4,10 +4,11 @@ import {
   CloudAlert,
   CloudCheck,
   CloudOff,
+  FileText,
   LoaderCircle,
+  Lock,
   RotateCcw,
   Users,
-  FileText,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useAuth } from '@/auth/store'
@@ -19,12 +20,17 @@ import {
   FONT_WEIGHTS,
   TABLE_FONTS,
   THEMES,
+  themeInForce,
   pickSettings,
   sameSettings,
   useSettings,
   type EdgeStyleId,
   type ThemeId,
 } from '../settings'
+import { showProblem } from '../components/problemToast'
+import { featureLockedProblem } from '../core/problems'
+import { useFeature } from '../planHooks'
+import { isPremiumTheme } from '../plans'
 import { retrySettingsSync, useSettingsSync } from '../settingsSync'
 
 /**
@@ -33,15 +39,28 @@ import { retrySettingsSync, useSettingsSync } from '../settingsSync'
  */
 
 /** A theme card. It carries data-theme itself, so it shows that theme's real colours whatever is active. */
-function ThemeCard({ id, name, note, active }: { id: ThemeId; name: string; note: string; active: boolean }) {
+function ThemeCard({
+  id,
+  name,
+  note,
+  active,
+  locked,
+}: {
+  id: ThemeId
+  name: string
+  note: string
+  active: boolean
+  locked: boolean
+}) {
   const setTheme = useSettings((s) => s.setTheme)
   return (
     <button
       type="button"
       data-theme={id}
       aria-pressed={active}
-      onClick={() => setTheme(id)}
-      className={`cursor-pointer rounded-xl border bg-canvas p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-key ${
+      // A premium theme without the plan is shown (so people see what they would get) but is not applied.
+      onClick={() => (locked ? showProblem(featureLockedProblem(`The ${name} theme`), 'warning') : setTheme(id))}
+      className={`relative cursor-pointer rounded-xl border bg-canvas p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-key ${
         active ? 'border-key ring-1 ring-key' : 'border-line hover:border-edge'
       }`}
     >
@@ -60,6 +79,7 @@ function ThemeCard({ id, name, note, active }: { id: ThemeId; name: string; note
       <div className="flex items-center gap-1 text-[14px] font-medium text-ink">
         <span className="truncate">{name}</span>
         {active && <Check size={14} className="ml-auto shrink-0 text-key" aria-label="Selected" />}
+        {locked && <Lock size={13} className="ml-auto shrink-0 text-muted" aria-label="Needs a paid plan" />}
       </div>
       <div className="truncate text-[12px] text-muted">{note}</div>
     </button>
@@ -263,6 +283,9 @@ function Preview({ edgeStyle }: { edgeStyle: EdgeStyleId }) {
 export function SettingsPage() {
   const settings = useSettings()
   const { theme, tableFont, tableWeight, edgeStyle, setTableFont, setTableWeight, setEdgeStyle, replace } = settings
+  const themesUnlocked = useFeature('themes')
+  // The theme in use is the chosen one unless it is premium and the plan does not include it (then the default is).
+  const shownTheme = themeInForce(theme, themesUnlocked)
   const isDefault = sameSettings(pickSettings(settings), DEFAULT_SETTINGS)
   const fontFamily = TABLE_FONTS.find((f) => f.id === tableFont)!.family
 
@@ -288,7 +311,14 @@ export function SettingsPage() {
           <Section title="Theme" hint="The colours of the whole app.">
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {THEMES.map((t) => (
-                <ThemeCard key={t.id} id={t.id} name={t.name} note={t.note} active={theme === t.id} />
+                <ThemeCard
+                  key={t.id}
+                  id={t.id}
+                  name={t.name}
+                  note={t.note}
+                  active={shownTheme === t.id}
+                  locked={isPremiumTheme(t.id) && !themesUnlocked}
+                />
               ))}
             </div>
           </Section>

@@ -1,7 +1,8 @@
 import { applyNodeChanges, type Connection, type Edge, type Node, type NodeChange } from '@xyflow/react'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { refusedProblem, removedProblem, type Problem } from './core/problems'
+import { refusedProblem, removedProblem, tableLimitProblem, type Problem } from './core/problems'
+import { FREE_FALLBACK } from './plans'
 import { checkRelations, isInvalid, type RelationIssue } from './core/relations'
 import { showNote, showProblem } from './components/problemToast'
 import { sidesForRects, type Side } from './core/routing'
@@ -81,6 +82,8 @@ type State = {
   codeOpen: boolean
   /** The left sidebar listing the account's ERDs is expanded. */
   listOpen: boolean
+  /** The plan's limit on tables in a diagram (the plan planEffects.ts reports); adding beyond it shows the upgrade note. */
+  tablePlan: { max: number; name: string; free: boolean }
   /** Compact view: every table shows only its name and each column's name and type. A view setting, not part of the diagram. */
   collapsed: boolean
   toggleCollapsed: () => void
@@ -364,6 +367,7 @@ export const useStore = create<State>()(
       codeOpen: true,
       listOpen: true,
       collapsed: false,
+      tablePlan: { max: FREE_FALLBACK.maxTablesPerDiagram, name: FREE_FALLBACK.name, free: true },
       codeFormat: 'prisma',
       sidebarWidth: 420,
       selectedEdgeId: null,
@@ -394,7 +398,8 @@ export const useStore = create<State>()(
           return { nodes: pruneReferences(nodes), manyToMany: pruneManyToMany(nodes, s.manyToMany) }
         }),
 
-      addTable: (position) =>
+      addTable: (position) => {
+        if (!hasRoom(1)) return
         set((s) => {
           const names = new Set(s.nodes.map((n) => n.data.name))
           let i = s.nodes.length + 1
@@ -406,7 +411,8 @@ export const useStore = create<State>()(
           }
           const fallback = { x: 60 + (s.nodes.length % 4) * 40, y: 60 + s.nodes.length * 40 }
           return { nodes: [...s.nodes, makeNode(table, position ?? fallback)] }
-        }),
+        })
+      },
 
       setTableIcon: (tableId, icon) =>
         set((s) => ({ nodes: mapTable(s.nodes, tableId, (t) => ({ ...t, icon })) })),
@@ -636,7 +642,8 @@ export const useStore = create<State>()(
       removeManyToMany: (id) =>
         set((s) => ({ selectedEdgeId: null, manyToMany: s.manyToMany.filter((l) => l.id !== id) })),
 
-      convertToJunction: (id) =>
+      convertToJunction: (id) => {
+        if (!hasRoom(1)) return
         set((s) => {
           const link = s.manyToMany.find((l) => l.id === id)
           const a = s.nodes.find((n) => n.id === link?.aTableId)
@@ -678,7 +685,8 @@ export const useStore = create<State>()(
             manyToMany: s.manyToMany.filter((l) => l.id !== id),
             selectedEdgeId: null,
           }
-        }),
+        })
+      },
 
       setSidebarWidth: (w) =>
         set({ sidebarWidth: Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(w))) }),
@@ -722,7 +730,7 @@ export const useStore = create<State>()(
 
       pasteTables: (at) => {
         const { clipboard, pasteCount, clipboardIsCut } = get()
-        if (!clipboard?.length) return
+        if (!clipboard?.length || !hasRoom(clipboard.length)) return
         const count = pasteCount + 1
         set((s) => ({
           nodes: pruneReferences([
@@ -734,7 +742,9 @@ export const useStore = create<State>()(
         }))
       },
 
-      duplicateTables: (ids) =>
+      duplicateTables: (ids) => {
+        const wanted = get().nodes.filter((n) => ids.includes(n.id)).length
+        if (wanted && !hasRoom(wanted)) return
         set((s) => {
           const picked = s.nodes
             .filter((n) => ids.includes(n.id))
@@ -747,7 +757,8 @@ export const useStore = create<State>()(
             ]),
             selectedEdgeId: null,
           }
-        }),
+        })
+      },
 
       setSelectedColumn: (selectedColumn) => set({ selectedColumn }),
       selectEdge: (selectedEdgeId) =>
@@ -789,6 +800,14 @@ export const useStore = create<State>()(
     },
   ),
 )
+
+/** True when `adding` more tables fit in the plan's limit; otherwise says so (with an upgrade button on the Free plan). */
+function hasRoom(adding: number): boolean {
+  const { nodes, tablePlan } = useStore.getState()
+  if (nodes.length + adding <= tablePlan.max) return true
+  showProblem(tableLimitProblem(tablePlan.max, tablePlan), 'warning')
+  return false
+}
 
 // The side panel shows ONE thing at a time: the generated code or the picked relation's settings. Whichever the
 // user opens last wins. Done as a subscription (not in each action) because the relation panel is opened from several

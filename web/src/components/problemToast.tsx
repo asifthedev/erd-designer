@@ -1,5 +1,10 @@
 import { toast } from 'sonner'
 import type { Problem } from '../core/problems'
+import { navigate } from '../lib/route'
+
+/** The button a message can carry (e.g. "Upgrade plan"), as Sonner wants it. */
+const actionOf = (problem: Problem) =>
+  problem.action ? { label: problem.action.label, onClick: () => navigate(problem.action!.to) } : undefined
 
 /**
  * The body of a message toast: which columns (a small code chip), why (one sentence) and what to do (one line).
@@ -27,6 +32,7 @@ export function showProblem(problem: Problem, kind: 'error' | 'warning' = 'error
   open(problem.title, {
     id,
     description: <ProblemBody problem={problem} />,
+    action: actionOf(problem),
     duration: Infinity,
     closeButton: true,
   })

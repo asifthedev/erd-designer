@@ -1,4 +1,8 @@
 import { useMemo, useState, type ReactNode } from 'react'
+import { Lock } from 'lucide-react'
+import { featureLockedProblem } from '../core/problems'
+import { useFeature } from '../planHooks'
+import { showProblem } from './problemToast'
 import { generateDrizzle } from '../core/drizzle'
 import { generatePrisma } from '../core/prisma'
 import { generateSql } from '../core/sql'
@@ -70,8 +74,11 @@ export function PrismaPanel() {
   const nodes = useStore((s) => s.nodes)
   const manyToMany = useStore((s) => s.manyToMany)
   const toggleCode = useStore((s) => s.toggleCode)
-  const format = useStore((s) => s.codeFormat)
+  const chosen = useStore((s) => s.codeFormat)
   const setFormat = useStore((s) => s.setCodeFormat)
+  // Prisma is free; Drizzle and SQL need a plan with `codeFormats`. A saved choice of one of them waits until the plan has it.
+  const moreFormats = useFeature('codeFormats')
+  const format = moreFormats ? chosen : 'prisma'
   const [copied, setCopied] = useState(false)
 
   // Only the visible format is generated. The SQL follows the selected database.
@@ -145,12 +152,17 @@ export function PrismaPanel() {
             type="button"
             role="tab"
             aria-selected={format === value}
-            onClick={() => setFormat(value)}
-            className={`cursor-pointer rounded-md px-2.5 py-1 text-[13px] font-medium ${
+            onClick={() =>
+              value !== 'prisma' && !moreFormats
+                ? showProblem(featureLockedProblem('Drizzle and SQL code'), 'warning')
+                : setFormat(value)
+            }
+            className={`flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-[13px] font-medium ${
               format === value ? 'bg-key/15 text-key' : 'text-muted hover:bg-hover hover:text-ink'
             }`}
           >
             {label}
+            {value !== 'prisma' && !moreFormats && <Lock size={12} aria-label="Needs a paid plan" />}
           </button>
         ))}
       </div>

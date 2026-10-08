@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { isPremiumTheme } from './plans'
 
 /**
  * Personal preferences: colour theme and the font used inside the tables. They live in this browser
@@ -100,11 +101,41 @@ export const pickSettings = (s: Settings): Settings => ({
 export const sameSettings = (a: Settings, b: Settings) =>
   a.theme === b.theme && a.tableFont === b.tableFont && a.tableWeight === b.tableWeight && a.edgeStyle === b.edgeStyle
 
+// The premium themes (see PREMIUM_THEMES) only show when the plan includes the `themes` feature. The choice itself is kept,
+// so it comes back when the plan does; until then the default theme is drawn instead. planEffects.ts sets this.
+const UNLOCK_HINT = 'erd-themes-unlocked'
+/** Remembered from last time, so a paying person's theme is not swapped for the default for a second at every start. */
+function rememberedUnlock(): boolean {
+  try {
+    return localStorage.getItem(UNLOCK_HINT) === '1'
+  } catch {
+    return false
+  }
+}
+let themesUnlocked = rememberedUnlock()
+
+/** The theme that is actually drawn for a chosen one: the same, unless it is a premium theme the plan does not include. */
+export const themeInForce = (theme: ThemeId, unlocked: boolean): ThemeId =>
+  isPremiumTheme(theme) && !unlocked ? DEFAULT_SETTINGS.theme : theme
+
+export const isThemeLocked = (theme: ThemeId) => isPremiumTheme(theme) && !themesUnlocked
+
+export function setThemesUnlocked(unlocked: boolean) {
+  if (unlocked === themesUnlocked) return
+  themesUnlocked = unlocked
+  try {
+    localStorage.setItem(UNLOCK_HINT, unlocked ? '1' : '0')
+  } catch {
+    /* a private window: the hint is only a nicety */
+  }
+  applySettings(useSettings.getState())
+}
+
 /** Puts the settings on <html>: the theme attribute (colours) and the table font variables. */
 export function applySettings(s: Settings) {
   if (typeof document === 'undefined') return
   const root = document.documentElement
-  root.dataset.theme = s.theme
+  root.dataset.theme = themeInForce(s.theme, themesUnlocked)
   root.style.setProperty('--table-font-family', TABLE_FONTS.find((f) => f.id === s.tableFont)!.family)
   root.style.setProperty('--table-font-weight', String(s.tableWeight))
 }

@@ -1,12 +1,14 @@
 import { useSyncExternalStore } from 'react'
 
 /**
- * Minimal path routing, enough for three pages: "/" is the marketing page, "/app" the editor and "/settings" the
- * Settings page. No router library; Vercel serves index.html for /app and /settings (see vercel.json) and the Vite
- * dev server does so on its own.
+ * Minimal path routing, enough for a handful of pages: "/" is the marketing page, "/app" the editor, "/settings" the
+ * Settings page, "/pricing" the plans and "/admin" the admin panel. No router library; Vercel serves index.html for
+ * these (see vercel.json) and the Vite dev server does so on its own.
  */
 export const APP_PATH = '/app'
 export const SETTINGS_PATH = '/settings'
+export const PRICING_PATH = '/pricing'
+export const ADMIN_PATH = '/admin'
 
 const listeners = new Set<() => void>()
 const subscribe = (fn: () => void) => {
@@ -23,8 +25,16 @@ export function usePath(): string {
   return useSyncExternalStore(subscribe, () => window.location.pathname)
 }
 
+/** Things to do before the page changes (the editor registers "save what is unsaved"): the editor goes away on navigation. */
+const beforeLeave = new Set<() => void>()
+export const onBeforeLeave = (fn: () => void) => {
+  beforeLeave.add(fn)
+  return () => beforeLeave.delete(fn)
+}
+
 export function navigate(to: string) {
   if (to === window.location.pathname) return
+  beforeLeave.forEach((fn) => fn())
   window.history.pushState(null, '', to)
   window.scrollTo(0, 0)
   listeners.forEach((fn) => fn())

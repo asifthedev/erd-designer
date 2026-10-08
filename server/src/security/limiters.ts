@@ -119,3 +119,48 @@ export const verifyLimiter = rateLimit({
   store: new PgStore('code-verify'),
   message: tooMany('Too many wrong codes. Try again in a few minutes.'),
 })
+
+/** Guessing the admin password from one IP: failed logins only. Much stricter than for users: there is one admin. */
+export const adminLoginIpLimiter = rateLimit({
+  ...common,
+  windowMs: 15 * 60_000,
+  limit: 6,
+  skipSuccessfulRequests: true,
+  keyGenerator: ip,
+  store: new PgStore('admin-login-ip'),
+  message: tooMany('Too many attempts. Try again in a few minutes.'),
+})
+
+/** ...and from many IPs at once: every failed admin login counts against one shared budget. */
+export const adminLoginGlobalLimiter = rateLimit({
+  ...common,
+  windowMs: 60 * 60_000,
+  limit: 20,
+  skipSuccessfulRequests: true,
+  keyGenerator: () => 'admin',
+  store: new PgStore('admin-login-all'),
+  message: tooMany('Too many failed admin logins. Try again later.'),
+  validate: { keyGeneratorIpFallback: false },
+})
+
+/** Placing orders: each is a row the admin has to look at, so keep a person from flooding them. */
+export const orderLimiter = rateLimit({
+  ...common,
+  windowMs: 60 * 60_000,
+  limit: 10,
+  keyGenerator: (req) => `user:${req.user?.id ?? ip(req)}`,
+  store: new PgStore('order'),
+  message: tooMany('Too many orders. Try again later.'),
+  validate: { keyGeneratorIpFallback: false },
+})
+
+/** Everything an admin does after logging in: generous, but not unlimited. */
+export const adminLimiter = rateLimit({
+  ...common,
+  windowMs: 60_000,
+  limit: 240,
+  keyGenerator: (req) => `admin:${req.admin?.email ?? ip(req)}`,
+  store: new PgStore('admin'),
+  message: tooMany('Too many requests. Slow down.'),
+  validate: { keyGeneratorIpFallback: false },
+})

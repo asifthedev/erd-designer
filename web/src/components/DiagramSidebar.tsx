@@ -16,6 +16,9 @@ import { useAuth, type DiagramMeta, type Loading } from '@/auth/store'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useCloseOnOutsidePointer } from '../hooks/useCloseOnOutsidePointer'
 import { initials, tableCountLabel, timeAgo } from '../lib/time'
+import { link, PRICING_PATH } from '../lib/route'
+import { useEffectivePlan } from '../planHooks'
+import { formatDate } from '../plans'
 import type { Provider } from '../core/model'
 import { SettingsLink } from './SettingsLink'
 import { useStore } from '../store'
@@ -235,7 +238,7 @@ export function DiagramSidebar() {
   const currentId = useAuth((s) => s.currentId)
   const loading = useAuth((s) => s.loading)
   const user = useAuth((s) => s.user)
-  const plan = useAuth((s) => s.plan)
+  const plan = useEffectivePlan()
   const createDiagram = useAuth((s) => s.createDiagram)
   const toggleList = useStore((s) => s.toggleList)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -394,7 +397,7 @@ export function DiagramSidebar() {
         <div>
           <div className="flex items-center justify-between text-[12px]">
             <span className="text-muted">
-              Diagrams <span className="capitalize">· {plan.name} plan</span>
+              Diagrams · <span className="font-medium text-ink">{plan.name}</span>
             </span>
             <span className={`font-mono font-medium ${atLimit ? 'text-warning' : ''}`}>
               {diagrams.length} / {plan.maxDiagrams}
@@ -414,6 +417,25 @@ export function DiagramSidebar() {
             />
           </div>
         </div>
+        {plan.kind === 'free' ? (
+          <a
+            href={PRICING_PATH}
+            onClick={link(PRICING_PATH)}
+            className="-mt-1 flex h-8 items-center justify-center rounded-lg bg-key/15 text-[12.5px] font-medium text-key outline-none hover:bg-key/25 focus-visible:ring-2 focus-visible:ring-key"
+          >
+            Upgrade plan
+          </a>
+        ) : (
+          <a
+            href={PRICING_PATH}
+            onClick={link(PRICING_PATH)}
+            className="-mt-1 truncate text-center text-[11.5px] text-muted hover:text-ink"
+          >
+            {plan.kind === 'monthly' && plan.expiresAt
+              ? `${plan.name} plan until ${formatDate(plan.expiresAt)}`
+              : `${plan.name} plan`}
+          </a>
+        )}
         {user && (
           <div className="flex items-center gap-2.5">
             <span

@@ -1,6 +1,8 @@
 import { toast } from 'sonner'
 import { showProblem } from '../components/problemToast'
-import { planLimitProblem } from '../core/problems'
+import { planLimitProblem, tableLimitProblem } from '../core/problems'
+import { onBeforeLeave } from '../lib/route'
+import { FREE_FALLBACK, type Entitlement } from '../plans'
 import { create } from 'zustand'
 import type { Provider } from '../core/model'
 import { toWorkspace, useStore, type Workspace } from '../store'
@@ -22,9 +24,6 @@ export type DiagramMeta = {
   provider?: Provider
 }
 
-/** What the account's plan allows (the server decides and sends it with the list of diagrams). */
-export type Plan = { name: string; maxDiagrams: number }
-const FREE_PLAN: Plan = { name: 'free', maxDiagrams: 1 }
 const DEFAULT_TITLE = 'Untitled diagram'
 /** What the server round trip is for, so the UI can say so (a spinner on the row / button, a note over the canvas). */
 export type Loading = {
@@ -42,8 +41,8 @@ type AuthState = {
   ready: boolean
   save: SaveState
   savedAt: number | null
-  /** The account's plan, which says how many diagrams it may have. */
-  plan: Plan
+  /** The account's plan: its limits (diagrams, tables per diagram) and which paid features it includes. */
+  plan: Entitlement
   /** The account's ERDs (oldest first) and which one is on the canvas. */
   diagrams: DiagramMeta[]
   currentId: string | null
@@ -74,6 +73,8 @@ type AuthState = {
   /** Creates a blank ERD and opens it. Resolves to its id, or null when it could not be created. */
   createDiagram: () => Promise<string | null>
   renameDiagram: (id: string, title: string) => Promise<void>
+  /** Asks the server for the account's plan again (after a purchase was confirmed, or a plan ran out). */
+  refreshPlan: () => Promise<void>
   /** Pins or unpins an ERD in the sidebar (shown at once, rolled back if the server refuses). */
   setPinned: (id: string, pinned: boolean) => Promise<void>
   deleteDiagram: (id: string) => Promise<void>
@@ -108,8 +109,13 @@ export const useAuth = create<AuthState>()((set, get) => {
       })
       return
     }
-    if (e instanceof ApiError && e.code === 'plan_limit') {
-      showProblem(planLimitProblem(get().plan.maxDiagrams), 'warning')
+    if (e instanceof ApiError && (e.code === 'plan_limit' || e.code === 'plan_limit_tables')) {
+      const { plan } = get()
+      const named = { name: plan.name, free: plan.kind === 'free' }
+      showProblem(
+        e.code === 'plan_limit' ? planLimitProblem(plan.maxDiagrams, named) : tableLimitProblem(plan.maxTablesPerDiagram, named),
+        'warning',
+      )
       return
     }
     toast.error(title, { id, description: (e as Error).message, closeButton: true, duration: Infinity })
@@ -178,7 +184,7 @@ export const useAuth = create<AuthState>()((set, get) => {
       loading: null,
     })
     try {
-      const { diagrams, plan } = await api<{ diagrams: DiagramMeta[]; plan?: Plan }>('/diagrams')
+      const { diagrams, plan } = await api<{ diagrams: DiagramMeta[]; plan?: Entitlement }>('/diagrams')
       if (plan) set({ plan })
       if (!diagrams.length) {
         const { diagram } = await api<{ diagram: DiagramMeta }>('/diagrams', {
@@ -207,7 +213,7 @@ export const useAuth = create<AuthState>()((set, get) => {
     ready: false,
     save: 'idle',
     savedAt: null,
-    plan: FREE_PLAN,
+    plan: FREE_FALLBACK,
     diagrams: [],
     currentId: null,
     switching: false,
@@ -340,7 +346,8 @@ export const useAuth = create<AuthState>()((set, get) => {
       if (get().switching) return null
       // Over the plan's limit: say so at once instead of asking the server (which would refuse too).
       if (get().diagrams.length >= get().plan.maxDiagrams) {
-        showProblem(planLimitProblem(get().plan.maxDiagrams), 'warning')
+        const { plan } = get()
+        showProblem(planLimitProblem(plan.maxDiagrams, { name: plan.name, free: plan.kind === 'free' }), 'warning')
         return null
       }
       set({ switching: true, loading: { kind: 'create' } })
@@ -359,6 +366,16 @@ export const useAuth = create<AuthState>()((set, get) => {
         return null
       } finally {
         set({ switching: false, loading: null })
+      }
+    },
+
+    refreshPlan: async () => {
+      if (get().status !== 'authed') return
+      try {
+        const { plan } = await api<{ plan: Entitlement }>('/plans/mine')
+        set({ plan })
+      } catch {
+        /* keep showing the plan we have */
       }
     },
 
@@ -436,3 +453,6 @@ export const useAuth = create<AuthState>()((set, get) => {
     },
   }
 })
+
+// Leaving the editor (for the pricing or settings page) must not lose what was just typed.
+onBeforeLeave(() => void useAuth.getState().saveNow())

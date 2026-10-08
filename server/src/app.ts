@@ -5,7 +5,10 @@ import { ZodError } from 'zod'
 import { config } from './config'
 import { attachUser, originCheck } from './middleware/auth'
 import { authRouter } from './routes/auth'
+import { adminRouter } from './routes/admin'
 import { diagramsRouter } from './routes/diagrams'
+import { ordersRouter } from './routes/orders'
+import { plansRouter } from './routes/plans'
 import { settingsRouter } from './routes/settings'
 import { globalLimiter } from './security/limiters'
 
@@ -28,6 +31,9 @@ export function createApp() {
   app.use('/api/auth', authRouter)
   app.use('/api/diagrams', diagramsRouter)
   app.use('/api/settings', settingsRouter)
+  app.use('/api/plans', plansRouter)
+  app.use('/api/orders', ordersRouter)
+  app.use('/api/admin', adminRouter)
 
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Not found' })

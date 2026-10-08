@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { FEATURE_KEYS, HARD_MAX_DIAGRAMS, HARD_MAX_TABLES } from './planTypes'
 
 // ---- Accounts ----------------------------------------------------------------------------------
 // Length is what matters for passwords (no composition rules); the upper bound stops huge-input abuse.
@@ -82,7 +83,7 @@ export const diagramSchema = z.object({
         data: table,
       }),
     )
-    .max(300),
+    .max(HARD_MAX_TABLES),
   manyToMany: z
     .array(
       z.object({
@@ -98,7 +99,7 @@ export const diagramSchema = z.object({
 export type DiagramPayload = z.infer<typeof diagramSchema>
 
 // ---- Saved diagrams (a user can keep several) -------------------------------------------------------
-export const MAX_DIAGRAMS_PER_USER = 50
+export const MAX_DIAGRAMS_PER_USER = HARD_MAX_DIAGRAMS
 const title = z.string().trim().min(1, 'Give the diagram a name').max(100, 'Use at most 100 characters')
 
 /** POST /diagrams: both fields optional, so "New ERD" can create a blank one. */
@@ -131,3 +132,54 @@ export const updatePreferencesSchema = preferencesSchema
   .partial()
   .strict()
   .refine((v) => Object.keys(v).length > 0, { message: 'Nothing to update' })
+
+// ---- Buying a plan ----------------------------------------------------------------------------------
+
+/** POST /orders: which plan, and (optionally) how to reach the buyer. */
+export const createOrderSchema = z.object({
+  planId: z.string().trim().min(1).max(40),
+  contact: z.string().trim().max(120).optional(),
+})
+
+/** PUT /orders/:id: the buyer adds a payment reference and / or contact while the order is waiting. */
+export const updateOrderSchema = z
+  .object({ reference: z.string().trim().max(200).optional(), contact: z.string().trim().max(120).optional() })
+  .refine((v) => v.reference !== undefined || v.contact !== undefined, { message: 'Nothing to update' })
+
+// ---- The admin panel ---------------------------------------------------------------------------------
+
+export const adminLoginSchema = z.object({
+  email: z.string().trim().toLowerCase().max(254),
+  password: z.string().min(1).max(200),
+})
+
+/** PUT /admin/plans/:id: any of the editable fields. The kind (free / monthly / lifetime) is fixed. */
+export const updatePlanSchema = z
+  .object({
+    name: z.string().trim().min(1, 'Give the plan a name').max(40),
+    description: z.string().trim().max(200),
+    priceCents: z.number().int('The price must be a whole number of cents').min(0).max(100_000_000),
+    currency: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z]{3}$/, 'Use a 3-letter currency code, like USD or PKR'),
+    maxDiagrams: z.number().int().min(1).max(HARD_MAX_DIAGRAMS, `At most ${HARD_MAX_DIAGRAMS}`),
+    maxTablesPerDiagram: z.number().int().min(1).max(HARD_MAX_TABLES, `At most ${HARD_MAX_TABLES}`),
+    features: z.object(Object.fromEntries(FEATURE_KEYS.map((k) => [k, z.boolean()]))).partial(),
+    highlights: z.array(z.string().trim().min(1).max(120)).max(12),
+    active: z.boolean(),
+  })
+  .partial()
+  .strict()
+  .refine((v) => Object.keys(v).length > 0, { message: 'Nothing to update' })
+
+/** PUT /admin/users/:id/plan: put an account on a plan by hand. A monthly plan needs an end date (default: a month from now). */
+export const setUserPlanSchema = z.object({
+  planId: z.string().trim().min(1).max(40),
+  expiresAt: z.iso.datetime().nullable().optional(),
+})
+
+export const adminOrderNoteSchema = z.object({ adminNote: z.string().trim().max(1000) })
+
+export const adminSettingsSchema = z.object({ paymentInstructions: z.string().max(4000) })

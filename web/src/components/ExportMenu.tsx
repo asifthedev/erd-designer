@@ -1,11 +1,13 @@
 import { useReactFlow } from '@xyflow/react'
-import { Download, FileCode, FileImage, FileText, LoaderCircle } from 'lucide-react'
+import { Download, FileCode, FileImage, FileText, Lock, LoaderCircle } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useAuth } from '@/auth/store'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { EXPORT_FORMATS, exportDiagram, type ExportFormat } from '../export/exportDiagram'
 import { useCloseOnOutsidePointer } from '../hooks/useCloseOnOutsidePointer'
+import { useFeature } from '../planHooks'
 import { useStore } from '../store'
+import { PRICING_PATH, navigate } from '../lib/route'
 import { showProblem } from './problemToast'
 
 const ICON: Record<ExportFormat, ReactNode> = {
@@ -22,6 +24,7 @@ const nextFrames = () =>
 export function ExportMenu() {
   const { getNodes, getNodesBounds } = useReactFlow()
   const hasTables = useStore((s) => s.nodes.length > 0)
+  const allowed = useFeature('export')
   const title = useAuth((s) => s.diagrams.find((d) => d.id === s.currentId)?.title)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState<ExportFormat | null>(null)
@@ -63,36 +66,72 @@ export function ExportMenu() {
         <button
           type="button"
           disabled={!hasTables}
-          title={hasTables ? 'Save the diagram as a picture' : 'Add a table first'}
+          title={
+            !allowed
+              ? 'Export is part of the paid plans'
+              : hasTables
+                ? 'Save the diagram as a picture'
+                : 'Add a table first'
+          }
           className={`flex cursor-pointer items-center gap-1.5 rounded-sm border px-2.5 py-1 outline-none focus-visible:ring-1 focus-visible:ring-key disabled:cursor-not-allowed disabled:opacity-50 ${
             open ? 'border-key/60 text-key' : 'border-line text-muted hover:border-key hover:text-key'
           }`}
         >
           <Download className="size-4" aria-hidden />
           Export
+          {!allowed && <Lock size={12} aria-label="Needs a paid plan" />}
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="font-ui w-72 p-1.5">
-        <p className="px-2 pt-1 pb-1.5 text-[11px] font-semibold tracking-wider text-muted uppercase">
-          Save the diagram as
-        </p>
-        {EXPORT_FORMATS.map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            disabled={!!busy}
-            onClick={() => void run(f.id)}
-            className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left outline-none hover:bg-hover focus-visible:bg-hover disabled:cursor-wait disabled:opacity-60"
-          >
-            <span className="grid size-8 shrink-0 place-items-center rounded-md bg-hover-strong text-key">
-              {busy === f.id ? <LoaderCircle size={17} className="animate-spin" aria-label="Exporting" /> : ICON[f.id]}
-            </span>
-            <span className="min-w-0">
-              <span className="block text-[13.5px] leading-tight font-medium">{f.label}</span>
-              <span className="block truncate text-[12px] leading-tight text-muted">{f.note}</span>
-            </span>
-          </button>
-        ))}
+        {!allowed ? (
+          <div className="flex flex-col gap-3 p-2.5">
+            <div className="flex items-start gap-3">
+              <span className="grid size-8 shrink-0 place-items-center rounded-md bg-key/15 text-key">
+                <Lock size={16} />
+              </span>
+              <p className="text-[13.5px] leading-snug">
+                <span className="block font-medium">Export is part of the paid plans</span>
+                <span className="text-muted">Save your diagram as a PNG, SVG or PDF picture.</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false)
+                navigate(PRICING_PATH)
+              }}
+              className="h-9 cursor-pointer rounded-lg bg-primary px-3 text-[13px] font-medium text-primary-foreground outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ink"
+            >
+              See plans
+            </button>
+          </div>
+        ) : (
+          <p className="px-2 pt-1 pb-1.5 text-[11px] font-semibold tracking-wider text-muted uppercase">
+            Save the diagram as
+          </p>
+        )}
+        {allowed &&
+          EXPORT_FORMATS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              disabled={!!busy}
+              onClick={() => void run(f.id)}
+              className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left outline-none hover:bg-hover focus-visible:bg-hover disabled:cursor-wait disabled:opacity-60"
+            >
+              <span className="grid size-8 shrink-0 place-items-center rounded-md bg-hover-strong text-key">
+                {busy === f.id ? (
+                  <LoaderCircle size={17} className="animate-spin" aria-label="Exporting" />
+                ) : (
+                  ICON[f.id]
+                )}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[13.5px] leading-tight font-medium">{f.label}</span>
+                <span className="block truncate text-[12px] leading-tight text-muted">{f.note}</span>
+              </span>
+            </button>
+          ))}
       </PopoverContent>
     </Popover>
   )

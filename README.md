@@ -16,6 +16,10 @@ second one asks you to upgrade your plan. Your diagrams are listed in a collapsi
   embedded HTML may not show its text. Built with `html-to-image` and `jsPDF`, both loaded only when you export
   (`web/src/export/exportDiagram.ts`).
 
+## Plans and pricing
+
+Free: 1 diagram of up to 25 tables. A monthly plan (default Pro: 5 diagrams of up to 100 tables, export, Drizzle / SQL code, all themes) and a Lifetime plan (your own copy of the app, set up and run for you). `/pricing` lists them with a comparison table and takes orders; payment is manual and the admin confirms it. `/admin` is a separate login (see `server/README.md`) to change prices, see the registered users and confirm orders.
+
 ## Settings
 
 The gear icon (toolbar, and at the foot of the diagram list) opens the **Settings** page, `/settings`, with only the

@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { prisma } from '../db'
 import { requireAuth } from '../middleware/auth'
 import { BLANK_DIAGRAM, createDiagramSchema, MAX_DIAGRAMS_PER_USER, updateDiagramSchema } from '../schemas'
-import { planLimitMessage, planOf } from '../plans'
+import { diagramLimitMessage, entitlementOf, tableLimitMessage } from '../plans'
 import { createLimiter, saveLimiter } from '../security/limiters'
 
 export const diagramsRouter = Router()
@@ -35,7 +35,7 @@ diagramsRouter.get('/', async (req, res) => {
     FROM erd_diagrams
     WHERE user_id = ${req.user!.id}
     ORDER BY created_at ASC`
-  res.json({ diagrams, plan: planOf(req.user!) })
+  res.json({ diagrams, plan: await entitlementOf(req.user!.id) })
 })
 
 diagramsRouter.post('/', createLimiter, express.json({ limit: '2mb' }), async (req, res) => {
@@ -46,10 +46,14 @@ diagramsRouter.post('/', createLimiter, express.json({ limit: '2mb' }), async (r
     res.status(409).json({ error: `You can keep up to ${MAX_DIAGRAMS_PER_USER} diagrams. Delete one to add another.` })
     return
   }
-  // The plan's own limit (lower than the cap above on the Free plan). `code` lets the web app show its upgrade note.
-  const plan = planOf(req.user!)
+  // The plan's own limits (lower than the cap above). `code` lets the web app show its upgrade note.
+  const plan = await entitlementOf(userId)
   if (owned >= plan.maxDiagrams) {
-    res.status(403).json({ error: planLimitMessage(plan), code: 'plan_limit' })
+    res.status(403).json({ error: diagramLimitMessage(plan), code: 'plan_limit' })
+    return
+  }
+  if (input.data && input.data.nodes.length > plan.maxTablesPerDiagram) {
+    res.status(403).json({ error: tableLimitMessage(plan), code: 'plan_limit_tables' })
     return
   }
   const diagram = await prisma.diagram.create({
@@ -83,6 +87,21 @@ diagramsRouter.put('/:id', saveLimiter, express.json({ limit: '2mb' }), async (r
     return
   }
   try {
+    // Saving content: a diagram may not have more tables than the plan allows. One that is already over (e.g. after a
+    // monthly plan ended) may still be edited and shrunk; it just may not grow.
+    if (input.data) {
+      const plan = await entitlementOf(req.user!.id)
+      const tables = input.data.nodes.length
+      if (tables > plan.maxTablesPerDiagram) {
+        const [stored] = await prisma.$queryRaw<{ n: number }[]>`
+          SELECT CASE WHEN jsonb_typeof(data->'nodes') = 'array' THEN jsonb_array_length(data->'nodes') ELSE 0 END AS n
+          FROM erd_diagrams WHERE id = ${id} AND user_id = ${req.user!.id}`
+        if (stored && tables > stored.n) {
+          res.status(403).json({ error: tableLimitMessage(plan), code: 'plan_limit_tables' })
+          return
+        }
+      }
+    }
     // Pinning alone is not an edit: it must not change "edited ..." or the order of the recent list, so it skips
     // Prisma's automatic updatedAt and writes just that column.
     if (input.pinned !== undefined && input.title === undefined && input.data === undefined) {

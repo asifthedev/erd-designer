@@ -24,6 +24,14 @@
     {
       "source": "/settings",
       "destination": "/index.html"
+    },
+    {
+      "source": "/pricing",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/admin",
+      "destination": "/index.html"
     }
   ],
   "headers": [

@@ -21,10 +21,12 @@ const schema = z.object({
   /** The From: header, e.g. "erd.designer <no-reply@example.com>". Required together with SMTP_URL. */
   MAIL_FROM: z.string().optional(),
   /**
-   * How many diagrams an account on the Free plan may have. Every account is on the Free plan for now; a paid plan
-   * would get its own number in src/plans.ts. (MAX_DIAGRAMS_PER_USER in schemas.ts is the hard cap for every plan.)
+   * The admin panel's single login. Admins are not website users: they are set here, so there is no sign-up for it
+   * and nothing in the database to steal. ADMIN_PASSWORD_HASH comes from `npm run admin:hash -w server`. Without
+   * both, the admin panel answers 503 "not set up".
    */
-  FREE_PLAN_MAX_DIAGRAMS: z.coerce.number().int().min(1).default(1),
+  ADMIN_EMAIL: z.string().trim().toLowerCase().optional(),
+  ADMIN_PASSWORD_HASH: z.string().optional(),
   /** Requests for a code always take at least this long, so answers can't reveal whether an address has an account. */
   CODE_REQUEST_MIN_MS: z.coerce.number().int().min(0).default(900),
 })

@@ -8,7 +8,14 @@ import type { RelationIssue } from './relations'
  *   reason - one plain sentence on why (using the names and types from the diagram, no tool jargon)
  *   fix    - one sentence on what to do next
  */
-export type Problem = { title: string; reason: string; fix?: string; where?: string }
+export type Problem = {
+  title: string
+  reason: string
+  fix?: string
+  where?: string
+  /** A button under the message, e.g. "Upgrade plan" going to the pricing page. */
+  action?: { label: string; to: string }
+}
 
 /** Explains one relation issue (see checkRelations) in plain words. */
 export function explainIssue(i: RelationIssue): Problem {
@@ -59,12 +66,43 @@ export function refusedProblem(i: RelationIssue): Problem {
   return { ...explainIssue(i), title: 'Relation not created' }
 }
 
-/** Shown when someone on the Free plan tries to create more diagrams than the plan includes. */
-export function planLimitProblem(maxDiagrams: number): Problem {
-  const what = maxDiagrams === 1 ? 'one diagram' : `${maxDiagrams} diagrams`
+const UPGRADE = { label: 'Upgrade plan', to: '/pricing' } as const
+const countOf = (n: number, noun: string) => `${n === 1 ? 'one' : n} ${noun}${n === 1 ? '' : 's'}`
+
+/** Shown when an account tries to create more diagrams than its plan includes. */
+export function planLimitProblem(maxDiagrams: number, plan: { name: string; free: boolean } = { name: 'Free', free: true }): Problem {
+  return plan.free
+    ? {
+        title: 'Free plan limit reached',
+        reason: `You can only create ${countOf(maxDiagrams, 'diagram')} on the Free plan.`,
+        fix: 'Please upgrade your plan to create more.',
+        action: UPGRADE,
+      }
+    : {
+        title: 'Diagram limit reached',
+        reason: `Your ${plan.name} plan includes ${countOf(maxDiagrams, 'diagram')}.`,
+        fix: 'Delete one to add another.',
+      }
+}
+
+/** Shown when a diagram would get more tables than the plan allows. */
+export function tableLimitProblem(maxTables: number, plan: { name: string; free: boolean }): Problem {
+  return plan.free
+    ? {
+        title: 'Free plan limit reached',
+        reason: `The Free plan allows up to ${maxTables} tables in a diagram.`,
+        fix: 'Please upgrade your plan to add more.',
+        action: UPGRADE,
+      }
+    : { title: 'Table limit reached', reason: `Your ${plan.name} plan allows up to ${maxTables} tables in a diagram.`, fix: 'Remove a table to add another.' }
+}
+
+/** Shown when someone uses something their plan does not include (export, Drizzle / SQL code, a premium theme). */
+export function featureLockedProblem(what: string): Problem {
   return {
-    title: 'Free plan limit reached',
-    reason: `You can only create ${what} on the Free plan.`,
-    fix: 'Please upgrade your plan to create more.',
+    title: 'Not in your plan',
+    reason: `${what} is part of the paid plans.`,
+    fix: 'Upgrade your plan to unlock it.',
+    action: UPGRADE,
   }
 }
