@@ -6,6 +6,7 @@ import { Handle, Position, useConnection, type NodeProps } from '@xyflow/react'
 import { memo } from 'react'
 import type { Column } from '../core/model'
 import { IconPicker } from './IconPicker'
+import { tableIcon } from './tableIcons'
 import { TypeCombobox } from './TypeCombobox'
 import { useColumnIssues } from './issuesContext'
 import { resolveSqlType } from '../core/sqlType'
@@ -35,6 +36,7 @@ const FLAGS: { key: FlagKey; label: string; title: string }[] = [
 /** A single column row. Reads only the store slices it needs, so unrelated edits do not re-render it. */
 function ColumnRow({ tableId, column }: { tableId: string; column: Column }) {
   const provider = useStore((s) => s.provider)
+  const collapsed = useStore((s) => s.collapsed)
   const updateColumn = useStore((s) => s.updateColumn)
 
   const issues = useColumnIssues(column.id)
@@ -73,46 +75,53 @@ function ColumnRow({ tableId, column }: { tableId: string; column: Column }) {
           }`}
         />
       ))}
-      <input
-        aria-label="Column name"
-        className={`${inputBase} w-40 text-key`}
-        value={column.name}
-        spellCheck={false}
-        onChange={(e) => patch({ name: e.target.value })}
-      />
-      <TypeCombobox
-        provider={provider}
-        title={typeCheck.ok ? undefined : typeCheck.error}
-        className={`${inputBase} w-44 ${typeCheck.ok ? 'text-ink' : 'text-danger'}`}
-        value={column.type}
-        onChange={(type) => patch({ type })}
-      />
-      <input
-        aria-label="Default value"
-        placeholder="default"
-        className={`${inputBase} w-32 text-num placeholder:text-muted/50`}
-        value={column.default}
-        spellCheck={false}
-        onChange={(e) => patch({ default: e.target.value })}
-      />
-      <div className="ml-auto flex items-center gap-1.5 pl-2">
-        {FLAGS.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            title={f.title}
-            aria-pressed={column[f.key]}
-            onClick={() => patch({ [f.key]: !column[f.key] })}
-            className={`nodrag cursor-pointer rounded-sm border px-1.5 py-1 text-[12px] leading-none font-semibold ${
-              column[f.key]
-                ? 'border-key/60 bg-key/15 text-key'
-                : 'border-line text-muted/60 hover:text-muted'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      {collapsed ? (
+        <>
+          <span className="min-w-0 flex-1 truncate px-1 py-0.5 text-key">{column.name}</span>
+          <span className={`shrink-0 px-1 py-0.5 ${typeCheck.ok ? 'text-ink' : 'text-danger'}`}>{column.type}</span>
+        </>
+      ) : (
+        <>
+          <input
+            aria-label="Column name"
+            className={`${inputBase} w-40 text-key`}
+            value={column.name}
+            spellCheck={false}
+            onChange={(e) => patch({ name: e.target.value })}
+          />
+          <TypeCombobox
+            provider={provider}
+            title={typeCheck.ok ? undefined : typeCheck.error}
+            className={`${inputBase} w-44 ${typeCheck.ok ? 'text-ink' : 'text-danger'}`}
+            value={column.type}
+            onChange={(type) => patch({ type })}
+          />
+          <input
+            aria-label="Default value"
+            placeholder="default"
+            className={`${inputBase} w-32 text-num placeholder:text-muted/50`}
+            value={column.default}
+            spellCheck={false}
+            onChange={(e) => patch({ default: e.target.value })}
+          />
+          <div className="ml-auto flex items-center gap-1.5 pl-2">
+            {FLAGS.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                title={f.title}
+                aria-pressed={column[f.key]}
+                onClick={() => patch({ [f.key]: !column[f.key] })}
+                className={`nodrag cursor-pointer rounded-sm border px-1.5 py-1 text-[12px] leading-none font-semibold ${
+                  column[f.key] ? 'border-key/60 bg-key/15 text-key' : 'border-line text-muted/60 hover:text-muted'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
       {(['l', 'r'] as const).map((side) => (
         <Handle
           key={`s${side}`}
@@ -133,13 +142,15 @@ function TableNodeView({ id, data, selected }: NodeProps<TableNodeType>) {
   const setTableIcon = useStore((s) => s.setTableIcon)
   const addColumn = useStore((s) => s.addColumn)
   const setHoveredTable = useStore((s) => s.setHoveredTable)
+  const collapsed = useStore((s) => s.collapsed)
+  const Icon = tableIcon(data.icon)
 
   return (
     <div
       // While the pointer is on the table, its relation lines glow (see deriveEdges).
       onPointerEnter={() => setHoveredTable(id)}
       onPointerLeave={() => setHoveredTable(null)}
-      className={`table-font group/table min-w-[680px] rounded-sm border bg-surface text-[16px] shadow-lg shadow-black/30 ${
+      className={`table-font group/table ${collapsed ? 'min-w-[340px]' : 'min-w-[680px]'} rounded-sm border bg-surface text-[16px] shadow-lg shadow-black/30 ${
         selected ? 'border-key' : 'border-line'
       }`}
     >
@@ -157,29 +168,42 @@ function TableNodeView({ id, data, selected }: NodeProps<TableNodeType>) {
             />
           )),
         )}
-        <IconPicker value={data.icon} onChange={(icon) => setTableIcon(id, icon)} />
-        <input
-          aria-label="Table name"
-          className={`${inputBase} text-[18px] font-semibold`}
-          // Monospace font, so the text is exactly `ch` per character wide; add the input's padding + border.
-          style={{ width: `calc(${Math.max(data.name.length, 4)}ch + 1.1rem)` }}
-          value={data.name}
-          spellCheck={false}
-          onChange={(e) => renameTable(id, e.target.value)}
-        />
+        {collapsed ? (
+          <>
+            <Icon className="size-4 shrink-0 text-muted" aria-hidden />
+            <span className="px-1 text-[18px] font-semibold">{data.name}</span>
+          </>
+        ) : (
+          <>
+            <IconPicker value={data.icon} onChange={(icon) => setTableIcon(id, icon)} />
+            <input
+              aria-label="Table name"
+              className={`${inputBase} text-[18px] font-semibold`}
+              // Monospace font, so the text is exactly `ch` per character wide; add the input's padding + border.
+              style={{
+                width: `calc(${Math.max(data.name.length, 4)}ch + 1.1rem)`,
+              }}
+              value={data.name}
+              spellCheck={false}
+              onChange={(e) => renameTable(id, e.target.value)}
+            />
+          </>
+        )}
         {/* Empty header space: click to select the table, drag to move it. */}
         <div className="flex-1" />
       </div>
       {data.columns.map((c) => (
         <ColumnRow key={c.id} tableId={id} column={c} />
       ))}
-      <button
-        type="button"
-        onClick={() => addColumn(id)}
-        className="nodrag w-full cursor-pointer border-t border-line px-3 py-2 hidden text-left text-muted group-hover/table:block hover:bg-row hover:text-key"
-      >
-        + add column
-      </button>
+      {!collapsed && (
+        <button
+          type="button"
+          onClick={() => addColumn(id)}
+          className="nodrag w-full cursor-pointer border-t border-line px-3 py-2 hidden text-left text-muted group-hover/table:block hover:bg-row hover:text-key"
+        >
+          + add column
+        </button>
+      )}
     </div>
   )
 }

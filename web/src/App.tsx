@@ -12,7 +12,7 @@ import {
   useReactFlow,
   type EdgeChange,
 } from '@xyflow/react'
-import { PanelLeftOpen, Table2 } from 'lucide-react'
+import { ChevronsDownUp, ChevronsUpDown, PanelLeftOpen, Table2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { DbIcon } from './components/DbIcon'
 import { Select } from './components/Select'
@@ -277,6 +277,8 @@ function Toolbar() {
   const clear = useStore((s) => s.clear)
   const codeOpen = useStore((s) => s.codeOpen)
   const toggleCode = useStore((s) => s.toggleCode)
+  const collapsed = useStore((s) => s.collapsed)
+  const toggleCollapsed = useStore((s) => s.toggleCollapsed)
   const { screenToFlowPosition } = useReactFlow()
 
   const btn =
@@ -304,6 +306,16 @@ function Toolbar() {
       >
         <Table2 className="size-4" aria-hidden />
         Add table
+      </button>
+      <button
+        type="button"
+        aria-pressed={collapsed}
+        className={`${btn} flex items-center gap-1.5 ${collapsed ? 'border-key! text-key!' : ''}`}
+        title={collapsed ? 'Show every table in full' : 'Collapse all tables to column names and types'}
+        onClick={toggleCollapsed}
+      >
+        {collapsed ? <ChevronsUpDown className="size-4" aria-hidden /> : <ChevronsDownUp className="size-4" aria-hidden />}
+        {collapsed ? 'Expand' : 'Collapse'}
       </button>
       <button type="button" className={btn} onClick={loadSample}>
         Sample

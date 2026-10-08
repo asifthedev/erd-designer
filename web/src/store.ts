@@ -78,6 +78,9 @@ type State = {
   codeOpen: boolean
   /** The left sidebar listing the account's ERDs is expanded. */
   listOpen: boolean
+  /** Compact view: every table shows only its name and each column's name and type. A view setting, not part of the diagram. */
+  collapsed: boolean
+  toggleCollapsed: () => void
   /** Which export the code panel shows. */
   codeFormat: CodeFormat
   setCodeFormat: (f: CodeFormat) => void
@@ -346,6 +349,7 @@ export const useStore = create<State>()(
       flashing: [],
       codeOpen: true,
       listOpen: true,
+      collapsed: false,
       codeFormat: 'prisma',
       sidebarWidth: 420,
       selectedEdgeId: null,
@@ -655,6 +659,7 @@ export const useStore = create<State>()(
       closeSidebar: () => set({ codeOpen: false, selectedEdgeId: null }),
       toggleCode: () => set((s) => ({ codeOpen: !s.codeOpen })),
       toggleList: () => set((s) => ({ listOpen: !s.listOpen })),
+      toggleCollapsed: () => set((s) => ({ collapsed: !s.collapsed })),
       setHoveredTable: (hoveredTableId) => set({ hoveredTableId }),
       copyTables: (ids) => {
         const picked = get().nodes.filter((n) => ids.includes(n.id))
@@ -736,6 +741,7 @@ export const useStore = create<State>()(
         manyToMany: s.manyToMany,
         codeOpen: s.codeOpen,
         listOpen: s.listOpen,
+        collapsed: s.collapsed,
         codeFormat: s.codeFormat,
         sidebarWidth: s.sidebarWidth,
       }),
