@@ -3,9 +3,10 @@ import { availableModels, defaultModel, fallbackChain, modelsForPlan, type Model
 import { PUBLIC_MESSAGES, UpstreamError } from '../ai/errors'
 import { SYSTEM_STATIC, systemDynamic } from '../ai/prompt'
 import { checkConversation, chatRequestSchema } from '../ai/requestSchema'
-import { liveRoute, routeChat, type RouterDeps } from '../ai/router'
-import { prismaUsage, type UsageStore } from '../ai/usage'
+import { liveRoute, routeChat, type Route, type RouterDeps } from '../ai/router'
 import { config } from '../config'
+import { effectiveAi, type EffectiveAi } from '../ai/settings'
+import { prismaUsage, type UsageStore } from '../ai/usage'
 import { requireAuth } from '../middleware/auth'
 import { entitlementOf } from '../plans'
 import { aiLimiter } from '../security/limiters'
@@ -13,37 +14,33 @@ import { TOOL_SPECS } from '../../../shared/aiToolSpecs'
 
 /** Replies are capped so one answer can never run up a large bill. A full schema of a dozen tables fits easily. */
 const MAX_OUTPUT_TOKENS = 8_000
+const REQUEST_TIMEOUT_MS = config.AI_REQUEST_TIMEOUT_MS
 
 type Deps = {
   usage: UsageStore
-  models: () => Promise<ModelInfo[]>
-  router: RouterDeps
+  /** The settings in force (what the admin saved, else the environment). */
+  settings: () => Promise<EffectiveAi>
+  models: (s: EffectiveAi) => Promise<ModelInfo[]>
+  routeFor: (m: ModelInfo, s: EffectiveAi) => Route
+  router: Omit<RouterDeps, 'routeFor'>
   /** Whether the account is on the Free plan (cheap models only, smaller daily limit). */
   isFree: (userId: string) => Promise<boolean>
 }
 
 const liveDeps = (): Deps => ({
   usage: prismaUsage,
-  models: () =>
-    availableModels({
-      gatewayUrl: config.AI_GATEWAY_BASE_URL,
-      gatewayKey: config.AI_GATEWAY_API_KEY,
-      anthropicKey: config.ANTHROPIC_API_KEY,
-      models: config.AI_MODELS,
-    }),
-  router: {
-    routeFor: (m) =>
-      liveRoute(m, {
-        gatewayUrl: config.AI_GATEWAY_BASE_URL,
-        gatewayKey: config.AI_GATEWAY_API_KEY,
-        anthropicUrl: config.ANTHROPIC_BASE_URL,
-        anthropicKey: config.ANTHROPIC_API_KEY,
-      }),
-  },
+  settings: effectiveAi,
+  models: (s) =>
+    s.enabled
+      ? availableModels({ gatewayUrl: s.gatewayUrl, gatewayKey: s.gatewayKey, anthropicKey: s.anthropicKey, models: s.modelsSpec })
+      : Promise.resolve([]),
+  routeFor: (m, s) =>
+    liveRoute(m, { gatewayUrl: s.gatewayUrl, gatewayKey: s.gatewayKey, anthropicUrl: s.anthropicUrl, anthropicKey: s.anthropicKey }),
+  router: {},
   isFree: async (userId) => (await entitlementOf(userId)).kind === 'free',
 })
 
-const limitFor = (free: boolean) => (free ? config.AI_DAILY_LIMIT_FREE : config.AI_DAILY_LIMIT_PAID)
+const limitFor = (s: EffectiveAi, free: boolean) => (free ? s.dailyLimitFree : s.dailyLimitPaid)
 
 const toPublic = (m: ModelInfo) => ({ id: m.id, label: m.label, maker: m.maker, tier: m.tier, contextTokens: m.contextTokens })
 
@@ -55,13 +52,14 @@ export function createAiRouter(overrides: Partial<Deps> = {}) {
 
   router.get('/models', async (req, res) => {
     const userId = req.user!.id
-    const [all, free, used] = await Promise.all([deps.models(), deps.isFree(userId), deps.usage.usedToday(userId)])
+    const settings = await deps.settings()
+    const [all, free, used] = await Promise.all([deps.models(settings), deps.isFree(userId), deps.usage.usedToday(userId)])
     const models = modelsForPlan(all, free)
     res.json({
       enabled: models.length > 0,
       models: models.map(toPublic),
-      defaultModel: defaultModel(models, config.AI_DEFAULT_MODEL)?.id ?? null,
-      quota: { used, limit: limitFor(free) },
+      defaultModel: defaultModel(models, settings.defaultModel)?.id ?? null,
+      quota: { used, limit: limitFor(settings, free) },
       // Models only a paid plan can use, so the picker can show them locked.
       locked: free ? all.filter((m) => !models.includes(m)).map(toPublic) : [],
     })
@@ -75,13 +73,14 @@ export function createAiRouter(overrides: Partial<Deps> = {}) {
       return
     }
     const userId = req.user!.id
-    const [all, free] = await Promise.all([deps.models(), deps.isFree(userId)])
+    const settings = await deps.settings()
+    const [all, free] = await Promise.all([deps.models(settings), deps.isFree(userId)])
     const allowed = modelsForPlan(all, free)
     if (!allowed.length) {
       res.status(503).json({ error: 'The AI assistant is not set up on this server.', code: 'not_configured' })
       return
     }
-    const chosen = input.model ? allowed.find((m) => m.id === input.model) : defaultModel(allowed, config.AI_DEFAULT_MODEL)
+    const chosen = input.model ? allowed.find((m) => m.id === input.model) : defaultModel(allowed, settings.defaultModel)
     if (!chosen) {
       const locked = all.some((m) => m.id === input.model)
       res.status(locked ? 403 : 400).json({
@@ -90,11 +89,11 @@ export function createAiRouter(overrides: Partial<Deps> = {}) {
       })
       return
     }
-    if (config.AI_MAX_DAILY_SPEND_USD && (await deps.usage.spendToday()) >= config.AI_MAX_DAILY_SPEND_USD) {
+    if (settings.maxDailySpendUsd && (await deps.usage.spendToday()) >= settings.maxDailySpendUsd) {
       res.status(503).json({ error: "The AI assistant has reached today's capacity. Please try again tomorrow.", code: 'capacity' })
       return
     }
-    const limit = limitFor(free)
+    const limit = limitFor(settings, free)
     if (!(await deps.usage.reserve(userId, limit))) {
       res.status(429).json({
         error: free
@@ -112,6 +111,7 @@ export function createAiRouter(overrides: Partial<Deps> = {}) {
       free,
       limit,
       body: input,
+      settings,
     })
   })
 
@@ -125,6 +125,7 @@ type Job = {
   free: boolean
   limit: number
   body: ReturnType<typeof chatRequestSchema.parse>
+  settings: EffectiveAi
 }
 
 /** Runs the model call and streams it to the browser as server-sent events. Owns the reserved request until it ends. */
@@ -135,7 +136,7 @@ async function stream(res: Response, deps: Deps, job: Job) {
   const deadline = setTimeout(() => {
     timedOut = true
     abort.abort()
-  }, config.AI_REQUEST_TIMEOUT_MS)
+  }, REQUEST_TIMEOUT_MS)
   // The person closed the tab or pressed Stop: stop paying for the answer.
   res.on('close', () => {
     if (!res.writableEnded) abort.abort()
@@ -169,7 +170,7 @@ async function stream(res: Response, deps: Deps, job: Job) {
         maxTokens: MAX_OUTPUT_TOKENS,
       },
       { signal: abort.signal, firstByteMs: 25_000, idleMs: 30_000 },
-      deps.router,
+      { ...deps.router, routeFor: (m) => deps.routeFor(m, job.settings) },
     )
     for await (const ev of events) {
       if (ev.type === 'model') {

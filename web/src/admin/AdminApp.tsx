@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { AiTab } from "./AiTab";
 import {
   FEATURE_KEYS,
   FEATURE_LABELS,
@@ -712,6 +713,7 @@ const TABS = [
   "Users",
   "Orders",
   "Payment",
+  "AI",
 ] as const;
 
 export function AdminApp() {
@@ -792,6 +794,7 @@ export function AdminApp() {
         {tab === "Users" && <UsersTab plans={plans} />}
         {tab === "Orders" && <OrdersTab />}
         {tab === "Payment" && <PaymentTab />}
+        {tab === "AI" && <AiTab />}
       </main>
     </div>
   );

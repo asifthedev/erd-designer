@@ -95,8 +95,8 @@ export function AiPanel() {
           </button>
         </Notice>
       ) : ai.enabled === false ? (
-        <Notice icon={<AlertTriangle size={18} />} title="The assistant is not set up">
-          No AI provider is configured on this server yet.
+        <Notice icon={<AlertTriangle size={18} />} title="The assistant is not available">
+          It is switched off, or no AI provider has been set up yet.
         </Notice>
       ) : ai.enabled === null ? (
         <Notice icon={<Sparkles size={18} />} title={ai.loadingModels ? 'Loading…' : 'The assistant is unavailable'}>

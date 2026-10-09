@@ -4,7 +4,9 @@ import type { Server } from 'node:http'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createApp } from '../app'
 import { prisma } from '../db'
+import { resetCatalogCache } from './catalog'
 import { sharedBreaker } from './router'
+import { invalidateAiSettings } from './settings'
 import { anthropicStream, openAiStream, startFakeGateway, type FakeGateway, type Reply } from './testing/fakeGateway'
 
 /** End to end over real HTTP: Express app -> router -> adapter -> fake gateway, with real PostgreSQL for accounts and usage. */
@@ -55,7 +57,11 @@ describe.skipIf(!hasDb)('AI assistant API (integration)', () => {
     server?.close()
     await gateway?.close()
   })
-  beforeEach(() => {
+  beforeEach(async () => {
+    // These tests run on the environment's settings: nothing saved in the admin panel may leak in.
+    await prisma.aiSettings.deleteMany()
+    invalidateAiSettings()
+    resetCatalogCache()
     sharedBreaker.reset()
     gateway.calls.length = 0
     script = () => ({ kind: 'sse', chunks: openAiStream({ text: ['ok'], usage: { prompt: 10, completion: 5, cost: 0.002 } }) })

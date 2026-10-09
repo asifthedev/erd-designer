@@ -14,6 +14,7 @@ import {
   setUserPlanSchema,
   updatePlanSchema,
 } from '../schemas'
+import { adminAiRouter } from './adminAi'
 import { adminLimiter, adminLoginGlobalLimiter, adminLoginIpLimiter } from '../security/limiters'
 
 /**
@@ -58,6 +59,7 @@ adminRouter.post('/logout', async (req, res) => {
 
 // ---- Everything below needs the admin session -------------------------------------------------------
 adminRouter.use(requireAdmin, adminLimiter, express.json({ limit: '32kb' }))
+adminRouter.use('/ai', adminAiRouter)
 
 adminRouter.get('/me', (req, res) => {
   res.json({ admin: req.admin })

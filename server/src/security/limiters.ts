@@ -175,3 +175,14 @@ export const aiLimiter = rateLimit({
   message: tooMany('You are sending AI requests too fast. Try again in a moment.'),
   validate: { keyGeneratorIpFallback: false },
 })
+
+/** The admin panel's "try this model" button spends real money: a handful per ten minutes. */
+export const adminAiTestLimiter = rateLimit({
+  ...common,
+  windowMs: 10 * 60_000,
+  limit: 30,
+  keyGenerator: (req) => `admin-ai:${req.admin?.email ?? ip(req)}`,
+  store: new PgStore('admin-ai-test'),
+  message: tooMany('Too many tests. Try again in a few minutes.'),
+  validate: { keyGeneratorIpFallback: false },
+})

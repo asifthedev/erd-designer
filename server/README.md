@@ -68,8 +68,11 @@ prisma/             schema.prisma + migrations
 
 One gateway key reaches models from many companies. Any OpenAI-compatible gateway works (OpenRouter by default, the Vercel AI Gateway, LiteLLM...). Nothing else changes without a key.
 
+**Everything is set in the admin panel (`/admin` > AI)**: the on/off switch, the gateway address and key (stored encrypted in the database, never shown again), the models people can pick (search the gateway's list, mark cheap ones `Fast`, choose the default, and press *Try it* to check a model really calls tools), the daily limits, the spend cap, and the usage of the last 7 days. The variables below are only a **fallback** for a field left empty in the panel. Secrets are encrypted with `APP_SECRET` (or, when it is not set, a key derived from `DATABASE_URL`); changing it means pasting the key again in the panel.
+
 | Variable | Default | Meaning |
 | --- | --- | --- |
+| `APP_SECRET` | from `DATABASE_URL` | Encrypts the keys saved in the admin panel |
 | `AI_GATEWAY_API_KEY` | none | The gateway key. Without it (and without `ANTHROPIC_API_KEY`) the assistant answers "not set up". |
 | `AI_GATEWAY_BASE_URL` | `https://openrouter.ai/api/v1` | e.g. `https://ai-gateway.vercel.sh/v1` for the Vercel AI Gateway |
 | `AI_MODELS` | built-in list | Models people can pick, comma separated, as `company/model`; add `\|fast` to mark a cheap one (the **only** kind the Free plan may use). `*` offers every model the gateway lists that can call tools. Models the gateway does not have, or that cannot call tools, are dropped on their own. |

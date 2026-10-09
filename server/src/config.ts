@@ -40,6 +40,12 @@ const schema = z.object({
   /** Requests for a code always take at least this long, so answers can't reveal whether an address has an account. */
   CODE_REQUEST_MIN_MS: z.coerce.number().int().min(0).default(900),
 
+  /**
+   * Encrypts secrets kept in the database (the AI gateway key typed into the admin panel). Optional: without it a key
+   * is derived from DATABASE_URL, so a copy of the database alone can never decrypt them.
+   */
+  APP_SECRET: optionalText,
+
   // ---- AI assistant (see src/ai). Without a key the assistant answers "not set up" and nothing else changes. ----
   /**
    * ONE key for many models: any OpenAI-compatible gateway. OpenRouter (the default base URL), Vercel AI Gateway

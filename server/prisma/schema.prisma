@@ -190,3 +190,25 @@ model AiUsage {
   @@index([day])
   @@map("erd_ai_usage")
 }
+
+/// The AI assistant's settings, edited in the admin panel (one row, id 1). Anything left empty falls back to the
+/// server environment, then to a built-in default. API keys are stored encrypted (see src/ai/secrets.ts).
+model AiSettings {
+  id                Int      @id @default(1)
+  /// Master switch: off, and nobody can use the assistant.
+  enabled           Boolean  @default(true)
+  gatewayBaseUrl    String?  @map("gateway_base_url")
+  gatewayKeyEnc     String?  @map("gateway_key_enc")
+  anthropicKeyEnc   String?  @map("anthropic_key_enc")
+  /// [{ id, tier }]; null: the built-in list.
+  models            Json?
+  /// Offer every model the gateway lists that can call tools (instead of the list above).
+  offerAllModels    Boolean  @default(false) @map("offer_all_models")
+  defaultModel      String?  @map("default_model")
+  dailyLimitFree    Int?     @map("daily_limit_free")
+  dailyLimitPaid    Int?     @map("daily_limit_paid")
+  maxDailySpendUsd  Float?   @map("max_daily_spend_usd")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("erd_ai_settings")
+}
