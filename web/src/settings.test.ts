@@ -66,8 +66,8 @@ describe('themes', () => {
     expect(c('line', 'canvas'), 'borders are visible against the canvas').toBeGreaterThanOrEqual(1.15)
   })
 
-  it('offers Midnight (the default), Dracula, Vercel, Warm Dark, Eraser and Violet', () => {
-    expect(DEFAULT_SETTINGS.theme).toBe('midnight')
+  it('offers Midnight, Dracula, Vercel, Warm Dark, Eraser (the default) and Violet', () => {
+    expect(DEFAULT_SETTINGS.theme).toBe('eraser')
     expect(THEMES.map((t) => t.id)).toEqual(['midnight', 'dracula', 'vercel', 'warm', 'eraser', 'violet'])
   })
 })
@@ -81,7 +81,7 @@ describe('table font settings', () => {
       ['Medium', 500],
     ])
     expect(DEFAULT_SETTINGS).toEqual({
-      theme: 'midnight',
+      theme: 'eraser',
       tableFont: 'google-sans-code',
       tableWeight: 400,
       edgeStyle: 'orthogonal',

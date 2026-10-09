@@ -9,11 +9,11 @@ import { isPremiumTheme } from './plans'
  */
 
 export const THEMES = [
-  { id: 'midnight', name: 'Midnight', note: 'Default' },
+  { id: 'midnight', name: 'Midnight', note: 'Dark blue' },
   { id: 'dracula', name: 'Dracula', note: 'Purple accents' },
   { id: 'vercel', name: 'Vercel', note: 'Pure black' },
   { id: 'warm', name: 'Warm Dark', note: 'Cream and amber' },
-  { id: 'eraser', name: 'Eraser', note: 'Coloured tables' },
+  { id: 'eraser', name: 'Eraser', note: 'Default · coloured tables' },
   { id: 'violet', name: 'Violet', note: 'Purple primary' },
 ] as const
 export type ThemeId = (typeof THEMES)[number]['id']
@@ -41,9 +41,9 @@ export type EdgeStyleId = (typeof EDGE_STYLES)[number]['id']
 
 export type Settings = { theme: ThemeId; tableFont: TableFontId; tableWeight: FontWeight; edgeStyle: EdgeStyleId }
 
-/** The look the app has always had: Midnight, Google Sans Code, regular weight, orthogonal lines. */
+/** The default look: Eraser, Google Sans Code, regular weight, orthogonal lines. */
 export const DEFAULT_SETTINGS: Settings = {
-  theme: 'midnight',
+  theme: 'eraser',
   tableFont: 'google-sans-code',
   tableWeight: 400,
   edgeStyle: 'orthogonal',

@@ -433,8 +433,10 @@ describe('starter workspace', () => {
     const { useStore } = await import('../store')
     useStore.getState().loadSample()
     const { nodes, manyToMany } = useStore.getState()
-    expect(nodes.map((n) => n.data.name)).toEqual(['tags', 'comments', 'users', 'posts'])
-    expect(manyToMany).toHaveLength(1)
+    expect(nodes.map((n) => n.data.name).sort()).toEqual(
+      ['address', 'admin', 'category', 'customer', 'order', 'order_item', 'payment', 'product', 'product_image', 'product_variant'],
+    )
+    expect(manyToMany).toHaveLength(0)
     for (const provider of ['postgresql', 'mysql', 'sqlite'] as const) {
       const diagram = { provider, tables: nodes.map((n) => n.data), manyToMany }
       expect(checkRelations(diagram).filter(isInvalid)).toEqual([])
@@ -549,7 +551,7 @@ describe('side panel', () => {
     const st = () => useStore.getState()
     st().loadSample()
     useStore.setState({ codeOpen: true, selectedEdgeId: null, edgePanelOpen: false })
-    const [users, comments] = [st().nodes.find((n) => n.data.name === 'users')!, st().nodes.find((n) => n.data.name === 'comments')!]
+    const [users, comments] = [st().nodes.find((n) => n.data.name === 'customer')!, st().nodes.find((n) => n.data.name === 'admin')!]
     st().pickManyToMany(users.id)
     st().pickManyToMany(comments.id) // creates a many-to-many link
     expect(st().selectedEdgeId?.startsWith('m2m:')).toBe(true)

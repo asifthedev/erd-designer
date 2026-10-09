@@ -161,77 +161,145 @@ function makeNode(table: Table, position: { x: number; y: number }): TableNodeTy
 }
 
 /**
- * The starter workspace a new user lands on: a small blog (users, posts, comments, tags) that shows the main
- * features at a glance: primary keys, unique / not-null flags, defaults, foreign keys with ON DELETE CASCADE,
- * a many-to-many link, and per-table icons.
+ * The starter workspace a new user lands on: a small online shop (customers, catalogue, orders, payments) that shows
+ * the main features at a glance: primary keys, unique / not-null flags, defaults, foreign keys (with ON DELETE
+ * CASCADE where the child cannot outlive its parent), a self-reference (category tree) and per-table icons and colours.
  */
 function sampleWorkspace(): { nodes: TableNodeType[]; manyToMany: ManyToMany[] } {
   const pk = (): Column => ({ ...newColumn('id', 'SERIAL'), primaryKey: true, notNull: true })
-  const users: Table = {
+  const col = (name: string, type: string, extra: Partial<Column> = {}): Column => ({ ...newColumn(name, type), ...extra })
+  const required = { notNull: true }
+  const createdAt = () => col('createdAt', 'TIMESTAMP', { notNull: true, default: 'now()' })
+  const table = (name: string, icon: string, color: string, columns: Column[]): Table => ({
     id: uid(),
-    name: 'users',
-    icon: 'Users',
-    color: 'blue',
-    columns: [
-      pk(),
-      { ...newColumn('email', 'VARCHAR(255)'), notNull: true, unique: true },
-      newColumn('name', 'VARCHAR(100)'),
-      { ...newColumn('created_at', 'TIMESTAMP'), notNull: true, default: 'now()' },
-    ],
-  }
-  const posts: Table = {
-    id: uid(),
-    name: 'posts',
-    icon: 'FileText',
-    color: 'green',
-    columns: [
-      pk(),
-      { ...newColumn('title', 'VARCHAR(200)'), notNull: true },
-      newColumn('body', 'TEXT'),
-      { ...newColumn('published', 'BOOLEAN'), notNull: true, default: 'false' },
-      {
-        ...newColumn('author_id', 'INT'),
-        notNull: true,
-        references: { tableId: users.id, columnId: users.columns[0].id, onDelete: 'CASCADE' },
-      },
-      { ...newColumn('created_at', 'TIMESTAMP'), notNull: true, default: 'now()' },
-    ],
-  }
-  const comments: Table = {
-    id: uid(),
-    name: 'comments',
-    icon: 'MessageSquare',
-    color: 'orange',
-    columns: [
-      pk(),
-      { ...newColumn('body', 'TEXT'), notNull: true },
-      {
-        ...newColumn('post_id', 'INT'),
-        notNull: true,
-        references: { tableId: posts.id, columnId: posts.columns[0].id, onDelete: 'CASCADE' },
-      },
-      { ...newColumn('created_at', 'TIMESTAMP'), notNull: true, default: 'now()' },
-    ],
-  }
-  const tags: Table = {
-    id: uid(),
-    name: 'tags',
-    icon: 'Tags',
-    color: 'purple',
-    columns: [pk(), { ...newColumn('name', 'VARCHAR(50)'), notNull: true, unique: true }],
-  }
+    name,
+    icon,
+    color,
+    columns,
+  })
+  const fk = (name: string, to: Table, extra: Partial<Column> = {}, onDelete?: ReferentialAction): Column =>
+    col(name, 'INT', { ...extra, references: { tableId: to.id, columnId: to.columns[0].id, onDelete } })
+
+  // Customers
+  const customer = table('customer', 'User', 'blue', [
+    pk(),
+    col('fullName', 'VARCHAR(120)', required),
+    col('phone', 'VARCHAR(30)'),
+    col('email', 'VARCHAR(255)', { notNull: true, unique: true }),
+    col('passwordHash', 'VARCHAR(255)', required),
+    createdAt(),
+  ])
+  const address = table('address', 'MapPin', 'blue', [
+    pk(),
+    fk('customerId', customer, required, 'CASCADE'),
+    col('recipientName', 'VARCHAR(120)', required),
+    col('phone', 'VARCHAR(30)', required),
+    col('addressLine', 'VARCHAR(255)', required),
+    col('city', 'VARCHAR(80)', required),
+    col('province', 'VARCHAR(80)'),
+    col('postalCode', 'VARCHAR(20)'),
+    col('isDefault', 'BOOLEAN', { notNull: true, default: 'false' }),
+  ])
+
+  // Catalogue
+  const category = table('category', 'Tag', 'green', [pk()])
+  category.columns.push(
+    fk('parentId', category, {}, 'SET NULL'),
+    col('name', 'VARCHAR(100)', required),
+    col('slug', 'VARCHAR(120)', { notNull: true, unique: true }),
+    col('isActive', 'BOOLEAN', { notNull: true, default: 'true' }),
+  )
+  const product = table('product', 'Package', 'green', [
+    pk(),
+    fk('categoryId', category, required),
+    col('name', 'VARCHAR(200)', required),
+    col('slug', 'VARCHAR(220)', { notNull: true, unique: true }),
+    col('description', 'TEXT'),
+    col('basePrice', 'DECIMAL(10,2)', required),
+    col('salePrice', 'DECIMAL(10,2)'),
+    col('isActive', 'BOOLEAN', { notNull: true, default: 'true' }),
+    createdAt(),
+  ])
+  const variant = table('product_variant', 'Layers', 'green', [
+    pk(),
+    fk('productId', product, required, 'CASCADE'),
+    col('sku', 'VARCHAR(60)', { notNull: true, unique: true }),
+    col('size', 'VARCHAR(20)'),
+    col('color', 'VARCHAR(40)'),
+    col('price', 'DECIMAL(10,2)', required),
+    col('stockQty', 'INT', { notNull: true, default: '0' }),
+    col('isActive', 'BOOLEAN', { notNull: true, default: 'true' }),
+  ])
+  const image = table('product_image', 'Image', 'green', [
+    pk(),
+    fk('productId', product, required, 'CASCADE'),
+    col('color', 'VARCHAR(40)'),
+    col('imageUrl', 'VARCHAR(500)', required),
+    col('sortOrder', 'INT', { notNull: true, default: '0' }),
+  ])
+
+  // Orders and payments
+  const order = table('order', 'ShoppingCart', 'orange', [
+    pk(),
+    col('orderNumber', 'VARCHAR(30)', { notNull: true, unique: true }),
+    fk('customerId', customer, {}, 'SET NULL'),
+    col('customerName', 'VARCHAR(120)', required),
+    col('customerPhone', 'VARCHAR(30)', required),
+    col('shippingAddress', 'VARCHAR(255)', required),
+    col('shippingCity', 'VARCHAR(80)', required),
+    col('status', 'VARCHAR(30)', { notNull: true, default: "'pending'" }),
+    col('subtotal', 'DECIMAL(10,2)', required),
+    col('shippingFee', 'DECIMAL(10,2)', { notNull: true, default: '0' }),
+    col('total', 'DECIMAL(10,2)', required),
+    col('notes', 'TEXT'),
+    col('courier', 'VARCHAR(60)'),
+    col('trackingNumber', 'VARCHAR(80)'),
+    createdAt(),
+  ])
+  const orderItem = table('order_item', 'ListChecks', 'orange', [
+    pk(),
+    fk('orderId', order, required, 'CASCADE'),
+    fk('variantId', variant, {}, 'SET NULL'),
+    col('productName', 'VARCHAR(200)', required),
+    col('size', 'VARCHAR(20)'),
+    col('color', 'VARCHAR(40)'),
+    col('unitPrice', 'DECIMAL(10,2)', required),
+    col('quantity', 'INT', { notNull: true, default: '1' }),
+  ])
+  const payment = table('payment', 'CreditCard', 'purple', [
+    pk(),
+    fk('orderId', order, required, 'CASCADE'),
+    col('method', 'VARCHAR(30)', required),
+    col('amount', 'DECIMAL(10,2)', required),
+    col('status', 'VARCHAR(30)', { notNull: true, default: "'pending'" }),
+    col('referenceNo', 'VARCHAR(80)'),
+    col('paidAt', 'TIMESTAMP'),
+  ])
+
+  const admin = table('admin', 'Shield', 'red', [
+    pk(),
+    col('name', 'VARCHAR(100)', required),
+    col('email', 'VARCHAR(255)', { notNull: true, unique: true }),
+    col('passwordHash', 'VARCHAR(255)', required),
+  ])
+
   return {
-    // Laid out so no relation line crosses another: `posts` is the hub on the right, everything it relates to
-    // stacks in the left column, so every line runs between the two columns (never between tables in the same
-    // column). The 280px gap (tables are ~680px wide) gives the lines room instead of squeezing them together.
+    // Four columns, left to right: customers, orders, catalogue, product images. Every relation runs between
+    // neighbouring columns (or straight up / down inside one), so no line crosses a table or another line.
+    // Tables are ~680px wide, so a 900px step leaves a 220px lane for the lines.
     nodes: [
-      makeNode(tags, { x: 0, y: 0 }),
-      makeNode(comments, { x: 0, y: 300 }),
-      makeNode(users, { x: 0, y: 620 }),
-      makeNode(posts, { x: 960, y: 160 }),
+      makeNode(address, { x: 0, y: 0 }),
+      makeNode(customer, { x: 0, y: 460 }),
+      makeNode(admin, { x: 0, y: 840 }),
+      makeNode(payment, { x: 900, y: 0 }),
+      makeNode(order, { x: 900, y: 400 }),
+      makeNode(orderItem, { x: 900, y: 1080 }),
+      makeNode(category, { x: 1800, y: 0 }),
+      makeNode(product, { x: 1800, y: 340 }),
+      makeNode(variant, { x: 1800, y: 800 }),
+      makeNode(image, { x: 2700, y: 340 }),
     ],
-    // A post has many tags and a tag many posts (Prisma emits an implicit relation).
-    manyToMany: [{ id: uid(), aTableId: posts.id, bTableId: tags.id }],
+    manyToMany: [],
   }
 }
 

@@ -125,6 +125,6 @@ export function comparisonRows(plans: PlanInfo[]): ComparisonRow[] {
   ]
 }
 
-/** The themes that need the `themes` feature; Midnight and Dracula are free. */
-export const PREMIUM_THEMES = ['vercel', 'warm', 'eraser', 'violet'] as const
+/** The themes that need the `themes` feature; Midnight, Dracula and Eraser (the default) are free. */
+export const PREMIUM_THEMES = ['vercel', 'warm', 'violet'] as const
 export const isPremiumTheme = (id: string) => (PREMIUM_THEMES as readonly string[]).includes(id)
