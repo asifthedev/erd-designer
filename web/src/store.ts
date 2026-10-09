@@ -14,6 +14,7 @@ import {
   type Bend,
   type Provider,
   type Reference,
+  type ReferentialAction,
   type Table,
 } from './core/model'
 
