@@ -1,5 +1,5 @@
 /** Thin fetch wrapper for the Express API (../erd-designer-api). Cookies are same-origin via the Vite proxy. */
-const BASE = import.meta.env.VITE_API_URL ?? ''
+export const BASE = import.meta.env.VITE_API_URL ?? ''
 
 export class ApiError extends Error {
   status: number

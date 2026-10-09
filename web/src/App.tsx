@@ -12,7 +12,7 @@ import {
   useReactFlow,
   type EdgeChange,
 } from "@xyflow/react";
-import { PanelLeftOpen } from "lucide-react";
+import { PanelLeftOpen, Sparkles } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -54,6 +54,7 @@ import {
   type MenuTarget,
 } from "./components/ContextMenu";
 import { IssuesProvider } from "./components/issues";
+import { AiPanel } from "./components/AiPanel";
 import { PrismaPanel } from "./components/PrismaPanel";
 import { ConnectionLine, RelationEdge } from "./components/RelationEdge";
 import { RelationCard } from "./components/RelationCard";
@@ -373,6 +374,8 @@ function Toolbar() {
   const setProvider = useStore((s) => s.setProvider);
   const codeOpen = useStore((s) => s.codeOpen);
   const toggleCode = useStore((s) => s.toggleCode);
+  const aiOpen = useStore((s) => s.aiOpen);
+  const toggleAi = useStore((s) => s.toggleAi);
 
   const btn =
     "cursor-pointer rounded-sm border border-line px-2.5 py-1 text-muted hover:border-key hover:text-key";
@@ -407,6 +410,15 @@ function Toolbar() {
         onClick={toggleCode}
       >
         {"{ }"} Code
+      </button>
+      <button
+        type="button"
+        className={`${btn} flex items-center gap-1.5 ${aiOpen ? "border-key/60! text-key!" : ""}`}
+        aria-pressed={aiOpen}
+        title={aiOpen ? "Hide the AI assistant" : "Design and edit with AI"}
+        onClick={toggleAi}
+      >
+        <Sparkles size={14} aria-hidden /> AI
       </button>
       <ExportMenu />
       <SettingsLink />
@@ -465,6 +477,7 @@ function SidebarResizer() {
 /** The signed-in (or guest) workspace. Autosave is wired here so it only runs while the editor is mounted. */
 function Editor() {
   const codeOpen = useStore((s) => s.codeOpen);
+  const aiOpen = useStore((s) => s.aiOpen);
   const sidebarWidth = useStore((s) => s.sidebarWidth);
   const hasRelation = useStore(
     (s) => s.selectedEdgeId !== null && s.edgePanelOpen,
@@ -499,14 +512,14 @@ function Editor() {
               <Canvas />
               <LoadingVeil />
             </main>
-            {(codeOpen || hasRelation) && (
+            {(codeOpen || hasRelation || aiOpen) && (
               <aside
                 style={{ width: sidebarWidth }}
                 className="relative flex max-w-[80vw] shrink-0 flex-col border-l border-line bg-surface"
               >
                 <SidebarResizer />
                 <RelationCard />
-                {codeOpen && <PrismaPanel />}
+                {aiOpen ? <AiPanel /> : codeOpen && <PrismaPanel />}
               </aside>
             )}
           </div>

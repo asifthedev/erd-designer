@@ -164,3 +164,14 @@ export const adminLimiter = rateLimit({
   message: tooMany('Too many requests. Slow down.'),
   validate: { keyGeneratorIpFallback: false },
 })
+
+/** The AI assistant: every model call costs money, so a person gets 20 a minute (a normal conversation uses a few). */
+export const aiLimiter = rateLimit({
+  ...common,
+  windowMs: 60_000,
+  limit: 20,
+  keyGenerator: (req) => `user:${req.user?.id ?? ip(req)}`,
+  store: new PgStore('ai'),
+  message: tooMany('You are sending AI requests too fast. Try again in a moment.'),
+  validate: { keyGeneratorIpFallback: false },
+})

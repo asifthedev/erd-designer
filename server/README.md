@@ -28,6 +28,8 @@ npm run dev                   # http://127.0.0.1:3001 (watch mode)
 | GET | `/api/plans` | public: the plans on offer (prices, limits, features, highlight lines) |
 | GET | `/api/plans/mine` | the signed-in user's plan now: `{ plan: { ..., expiresAt } }` |
 | GET / POST | `/api/orders` | list the user's orders and the payment instructions / place an order `{ planId, contact? }` (asking again for a plan with an open order returns it) |
+| GET | `/api/ai/models` | the AI models this account may use (Free: only the cheap tier; the rest listed as `locked`), the default one, and today's `quota` |
+| POST | `/api/ai/chat` | `{ model?, canvas, messages }` → a **server-sent event stream** of ONE model call: `model`, `text`, `tool_call`, `done`, `error`. Stateless: the web app runs the tool calls on the canvas and calls again with the results. 429 `daily_limit`, 403 `model_locked`, 503 `capacity` / `not_configured` |
 | PUT / POST | `/api/orders/:id`, `/api/orders/:id/cancel` | add the payment reference, or cancel a pending order |
 | GET | `/api/health` | `{ ok: true }` (no database access) |
 
@@ -62,6 +64,23 @@ prisma/             schema.prisma + migrations
 | `MAIL_FROM` | none | From header, e.g. `erd.designer <no-reply@example.com>` |
 | `ADMIN_EMAIL` | none | The admin panel's login email. Without it and `ADMIN_PASSWORD_HASH`, `/admin` answers "not set up" (503) |
 | `ADMIN_PASSWORD_HASH` | none | scrypt hash of the admin password: run `npm run admin:hash -w server` (the password is never stored). Single-quote it in a `.env`, it contains `$` |
+### AI assistant
+
+One gateway key reaches models from many companies. Any OpenAI-compatible gateway works (OpenRouter by default, the Vercel AI Gateway, LiteLLM...). Nothing else changes without a key.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `AI_GATEWAY_API_KEY` | none | The gateway key. Without it (and without `ANTHROPIC_API_KEY`) the assistant answers "not set up". |
+| `AI_GATEWAY_BASE_URL` | `https://openrouter.ai/api/v1` | e.g. `https://ai-gateway.vercel.sh/v1` for the Vercel AI Gateway |
+| `AI_MODELS` | built-in list | Models people can pick, comma separated, as `company/model`; add `\|fast` to mark a cheap one (the **only** kind the Free plan may use). `*` offers every model the gateway lists that can call tools. Models the gateway does not have, or that cannot call tools, are dropped on their own. |
+| `AI_DEFAULT_MODEL` | first one | Preselected model |
+| `ANTHROPIC_API_KEY` | none | Optional direct route to Anthropic (adds "(direct)" models, with prompt caching) |
+| `AI_DAILY_LIMIT_FREE` / `AI_DAILY_LIMIT_PAID` | `30` / `500` | Model calls per account per UTC day (a change to the canvas takes a few calls) |
+| `AI_MAX_DAILY_SPEND_USD` | none | Stops the assistant for everybody for the rest of the day once the gateway reported this much spend (OpenRouter reports cost per call) |
+| `AI_REQUEST_TIMEOUT_MS` | `50000` | Time limit for one answer; keep it below the function's `maxDuration` (60 s in `vercel.json`) |
+
+How it is built (`src/ai`): `catalog.ts` lists models and checks the gateway's live list for tool support; `router.ts` retries a blip once, fails over to another company's model before the first word is shown, and opens a circuit breaker on a model that keeps failing; `openaiCompat.ts` / `anthropic.ts` are the two wire formats; `usage.ts` keeps the daily count in Postgres (reserved atomically, handed back when a model fails before answering). The tools the model may call are defined once in `shared/aiToolSpecs.ts` and run by the web app on the canvas, so unsaved canvases work and the server never edits diagrams behind the person's back. Provider error text is never sent to the browser.
+
 
 ### Plans, orders and the admin panel
 

@@ -81,6 +81,11 @@ type State = {
   setSelectedColumn: (c: { tableId: string; columnId: string } | null) => void
   /** Whether the schema.prisma side panel is shown. */
   codeOpen: boolean
+  /** The AI assistant panel is shown (it takes the place of the code panel; not remembered between visits). */
+  aiOpen: boolean
+  toggleAi: () => void
+  /** Replaces the canvas content with what an assistant tool call produced (the tool already checked it). */
+  applyAiCanvas: (c: { provider: Provider; nodes: TableNodeType[]; manyToMany: ManyToMany[] }) => void
   /** The left sidebar listing the account's ERDs is expanded. */
   listOpen: boolean
   /** The plan's limit on tables in a diagram (the plan planEffects.ts reports); adding beyond it shows the upgrade note. */
@@ -434,6 +439,7 @@ export const useStore = create<State>()(
       clipboardIsCut: false,
       flashing: [],
       codeOpen: true,
+      aiOpen: false,
       listOpen: true,
       collapsed: false,
       tablePlan: { max: FREE_FALLBACK.maxTablesPerDiagram, name: FREE_FALLBACK.name, free: true },
@@ -761,7 +767,11 @@ export const useStore = create<State>()(
         set({ sidebarWidth: Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(w))) }),
       setCodeFormat: (codeFormat) => set({ codeFormat }),
       closeSidebar: () => set({ codeOpen: false, selectedEdgeId: null }),
-      toggleCode: () => set((s) => ({ codeOpen: !s.codeOpen })),
+      toggleCode: () => set((s) => ({ codeOpen: !s.codeOpen, aiOpen: s.codeOpen ? s.aiOpen : false })),
+      toggleAi: () =>
+        set((s) => ({ aiOpen: !s.aiOpen, codeOpen: s.aiOpen ? s.codeOpen : false, selectedEdgeId: s.aiOpen ? s.selectedEdgeId : null })),
+      applyAiCanvas: (c) =>
+        set({ provider: c.provider, nodes: c.nodes, manyToMany: c.manyToMany, selectedEdgeId: null, selectedColumn: null, pendingM2m: null }),
       toggleList: () => set((s) => ({ listOpen: !s.listOpen })),
       toggleCollapsed: () => set((s) => ({ collapsed: !s.collapsed })),
       setHoveredTable: (hoveredTableId) => set({ hoveredTableId }),

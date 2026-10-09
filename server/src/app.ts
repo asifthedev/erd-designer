@@ -4,6 +4,7 @@ import helmet from 'helmet'
 import { ZodError } from 'zod'
 import { config } from './config'
 import { attachUser, originCheck } from './middleware/auth'
+import { aiRouter } from './routes/ai'
 import { authRouter } from './routes/auth'
 import { adminRouter } from './routes/admin'
 import { diagramsRouter } from './routes/diagrams'
@@ -28,6 +29,7 @@ export function createApp() {
 
   // JSON body parsing is mounted per router (small cap for auth, 2 MB only for authenticated saves).
   app.use('/api', globalLimiter, originCheck, attachUser)
+  app.use('/api/ai', aiRouter)
   app.use('/api/auth', authRouter)
   app.use('/api/diagrams', diagramsRouter)
   app.use('/api/settings', settingsRouter)

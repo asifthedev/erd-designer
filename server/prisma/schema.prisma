@@ -29,6 +29,7 @@ model User {
   sessions Session[]
   diagrams Diagram[]
   orders   Order[]
+  aiUsage  AiUsage[]
 
   @@map("erd_users")
 }
@@ -169,4 +170,23 @@ model AdminSession {
 
   @@index([expiresAt])
   @@map("erd_admin_sessions")
+}
+
+/// What the AI assistant used per account and (UTC) day: the daily request limit and the spend report.
+/// A request is counted when it starts (so parallel requests cannot slip past the limit) and handed back when
+/// the model failed before answering; tokens and cost are added when the answer finishes.
+model AiUsage {
+  userId       String   @map("user_id")
+  day          DateTime @db.Date
+  requests     Int      @default(0)
+  inputTokens  Int      @default(0) @map("input_tokens")
+  outputTokens Int      @default(0) @map("output_tokens")
+  /// Spend reported by the gateway, in millionths of a US dollar (0 when the gateway does not report cost).
+  costMicros   BigInt   @default(0) @map("cost_micros")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, day])
+  @@index([day])
+  @@map("erd_ai_usage")
 }
