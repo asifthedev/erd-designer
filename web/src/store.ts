@@ -289,15 +289,15 @@ function sampleWorkspace(): { nodes: TableNodeType[]; manyToMany: ManyToMany[] }
     // Tables are ~680px wide, so a 900px step leaves a 220px lane for the lines.
     nodes: [
       makeNode(address, { x: 0, y: 0 }),
-      makeNode(customer, { x: 0, y: 460 }),
-      makeNode(admin, { x: 0, y: 840 }),
+      makeNode(customer, { x: 0, y: 520 }),
+      makeNode(admin, { x: 0, y: 900 }),
       makeNode(payment, { x: 900, y: 0 }),
-      makeNode(order, { x: 900, y: 400 }),
-      makeNode(orderItem, { x: 900, y: 1080 }),
+      makeNode(order, { x: 900, y: 440 }),
+      makeNode(orderItem, { x: 900, y: 1230 }),
       makeNode(category, { x: 1800, y: 0 }),
-      makeNode(product, { x: 1800, y: 340 }),
-      makeNode(variant, { x: 1800, y: 800 }),
-      makeNode(image, { x: 2700, y: 340 }),
+      makeNode(product, { x: 1800, y: 350 }),
+      makeNode(variant, { x: 1800, y: 870 }),
+      makeNode(image, { x: 2700, y: 350 }),
     ],
     manyToMany: [],
   }
