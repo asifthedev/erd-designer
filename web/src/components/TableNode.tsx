@@ -6,7 +6,7 @@ import { Handle, Position, useConnection, type NodeProps } from '@xyflow/react'
 import { memo } from 'react'
 import type { Column } from '../core/model'
 import { IconPicker } from './IconPicker'
-import { Ellipsis } from 'lucide-react'
+import { Ellipsis, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useCloseOnOutsidePointer } from '../hooks/useCloseOnOutsidePointer'
@@ -199,6 +199,7 @@ function TableNodeView({ id, data, selected }: NodeProps<TableNodeType>) {
   const setTableIcon = useStore((s) => s.setTableIcon)
   const addColumn = useStore((s) => s.addColumn)
   const setHoveredTable = useStore((s) => s.setHoveredTable)
+  const askAbout = useStore((s) => s.askAbout)
   const collapsed = useStore((s) => s.collapsed)
   const eraser = useSettings((s) => s.theme === 'eraser')
   const color = resolveTableColor(id, data.color)
@@ -242,6 +243,16 @@ function TableNodeView({ id, data, selected }: NodeProps<TableNodeType>) {
         />
         {/* Empty header space: click to select the table, drag to move it. */}
         <div className="flex-1" />
+        <button
+          type="button"
+          data-export-hide
+          title="Ask the AI about this table"
+          aria-label="Ask the AI about this table"
+          onClick={() => askAbout({ kind: 'table', id })}
+          className="nodrag grid size-7 cursor-pointer place-items-center rounded-sm text-muted opacity-0 transition-opacity group-hover/table:opacity-100 hover:text-key focus-visible:opacity-100"
+        >
+          <Sparkles size={16} aria-hidden />
+        </button>
         {eraser && <ColorMenu tableId={id} color={data.color} resolved={color} />}
       </div>
       {data.columns.map((c, i) => (

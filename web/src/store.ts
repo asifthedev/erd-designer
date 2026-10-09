@@ -84,6 +84,8 @@ type State = {
   /** The AI assistant panel is shown (it takes the place of the code panel; not remembered between visits). */
   aiOpen: boolean
   toggleAi: () => void
+  /** "Ask AI about this": picks exactly that table / column / relation and opens the assistant, so the next question is about it. */
+  askAbout: (target: { kind: 'table'; id: string } | { kind: 'column'; tableId: string; columnId: string } | { kind: 'relation'; id: string }) => void
   /** Replaces the canvas content with what an assistant tool call produced (the tool already checked it). */
   applyAiCanvas: (c: { provider: Provider; nodes: TableNodeType[]; manyToMany: ManyToMany[] }) => void
   /** The left sidebar listing the account's ERDs is expanded. */
@@ -770,6 +772,19 @@ export const useStore = create<State>()(
       toggleCode: () => set((s) => ({ codeOpen: !s.codeOpen, aiOpen: s.codeOpen ? s.aiOpen : false })),
       toggleAi: () =>
         set((s) => ({ aiOpen: !s.aiOpen, codeOpen: s.aiOpen ? s.codeOpen : false, selectedEdgeId: s.aiOpen ? s.selectedEdgeId : null })),
+      askAbout: (target) =>
+        set((s) => ({
+          aiOpen: true,
+          codeOpen: false,
+          edgePanelOpen: false,
+          pendingM2m: null,
+          nodes: s.nodes.map((n) => {
+            const want = target.kind === 'table' && n.id === target.id
+            return n.selected === want ? n : { ...n, selected: want }
+          }),
+          selectedColumn: target.kind === 'column' ? { tableId: target.tableId, columnId: target.columnId } : null,
+          selectedEdgeId: target.kind === 'relation' ? target.id : null,
+        })),
       applyAiCanvas: (c) =>
         set({ provider: c.provider, nodes: c.nodes, manyToMany: c.manyToMany, selectedEdgeId: null, selectedColumn: null, pendingM2m: null }),
       toggleList: () => set((s) => ({ listOpen: !s.listOpen })),

@@ -5,12 +5,12 @@ import type { ServerEvent } from './api'
 
 /** What the stand-in model does on its n-th call: events to stream, or a failure. */
 type Round = ServerEvent[] | Error | ((signal: AbortSignal) => AsyncGenerator<ServerEvent>)
-const model = { rounds: [] as Round[], bodies: [] as any[] }
+const model = { rounds: [] as Round[], bodies: [] as any[], vision: false }
 
 vi.mock('./api', () => ({
   fetchModels: vi.fn(async () => ({
     enabled: true,
-    models: [{ id: 'm/one', label: 'One', maker: 'M', tier: 'smart' }],
+    models: [{ id: 'm/one', label: 'One', maker: 'M', tier: 'smart', vision: model.vision }],
     defaultModel: 'm/one',
     quota: { used: 1, limit: 10 },
     locked: [],
@@ -38,7 +38,7 @@ const authState = {
 }
 vi.mock('../auth/store', () => ({ useAuth: { getState: () => authState } }))
 
-const { useAi } = await import('./agent')
+const { useAi, setCanvasCapture } = await import('./agent')
 
 const tool = (id: string, name: string, args: object): ServerEvent => ({ type: 'tool_call', id, name, arguments: JSON.stringify(args) })
 const text = (delta: string): ServerEvent => ({ type: 'text', delta })
@@ -47,9 +47,17 @@ const makeTable = (name: string) => ({ name, columns: [{ name: 'id', type: 'SERI
 const names = () => useStore.getState().nodes.map((n) => n.data.name)
 const last = () => useAi.getState().messages.at(-1)!
 
+const SHOT = 'data:image/jpeg;base64,/9j/AAAA'
+const sendWith = async (text: string, options?: Parameters<ReturnType<typeof useAi.getState>['send']>[1]) => {
+  await useAi.getState().loadModels() // the model's vision flag is read from the list
+  await useAi.getState().send(text, options)
+}
+
 beforeEach(() => {
   model.rounds = []
   model.bodies = []
+  model.vision = false
+  setCanvasCapture(null)
   authState.status = 'authed'
   authState.currentId = 'd1'
   authState.createDiagram.mockClear()
@@ -105,10 +113,10 @@ describe('the assistant loop', () => {
   })
 
   it('stops after too many rounds, and after repeated failures', async () => {
-    model.rounds = Array.from({ length: 12 }, (_, i) => [tool(`c${i}`, 'auto_layout', {}), done('tool_calls')])
+    model.rounds = Array.from({ length: 16 }, (_, i) => [tool(`c${i}`, 'auto_layout', {}), done('tool_calls')])
     useStore.getState().addTable()
     await useAi.getState().send('loop')
-    expect(model.bodies).toHaveLength(10)
+    expect(model.bodies).toHaveLength(14)
     expect(last().notice).toMatch(/Stopped after many steps/)
 
     model.rounds = Array.from({ length: 6 }, (_, i) => [tool(`f${i}`, 'drop_tables', { tables: ['nothing'] }), done('tool_calls')])
@@ -213,5 +221,188 @@ describe('models', () => {
     model.rounds = [[text('hi'), done()]]
     await useAi.getState().send('x')
     expect(model.bodies[0].model).toBe('m/one')
+  })
+})
+
+describe('asking about what is picked', () => {
+  const twoTables = [tool('c', 'create_tables', { tables: [makeTable('customer'), { name: 'order', columns: [{ name: 'id', type: 'SERIAL', primaryKey: true }, { name: 'customer_id', type: 'INT', references: { table: 'customer' } }] }] }), done('tool_calls')]
+  const build = async () => {
+    model.rounds = [twoTables, [text('built'), done()]]
+    await useAi.getState().send('make two tables')
+    model.bodies = []
+  }
+
+  it('tells the model exactly what is picked, in every round of the question, and keeps it in the history', async () => {
+    await build()
+    const [customer, order] = useStore.getState().nodes
+    useStore.setState({ nodes: useStore.getState().nodes.map((n) => ({ ...n, selected: n.id === order.id })), selectedColumn: { tableId: customer.id, columnId: customer.data.columns[0].id } })
+    model.rounds = [[tool('a', 'auto_layout', {}), done('tool_calls')], [text('The order table holds a customer.'), done()]]
+    await useAi.getState().send('why is this here?')
+    for (const body of model.bodies) {
+      expect(body.focus).toEqual({ tables: ['order'], columns: [{ table: 'customer', column: 'id' }], relations: [], manyToMany: [] })
+    }
+    expect(model.bodies[0].messages.at(-1).content).toBe('[Picked on the canvas: table order; column customer.id]\nwhy is this here?')
+    expect(useAi.getState().messages.find((m) => m.role === 'user' && m.text === 'why is this here?')?.about).toEqual(['table order', 'column customer.id'])
+  })
+
+  it('knows a picked relation line and a picked link', async () => {
+    await build()
+    const [customer, order] = useStore.getState().nodes
+    const fk = order.data.columns[1]
+    useStore.setState({ nodes: useStore.getState().nodes.map((n) => ({ ...n, selected: false })), selectedEdgeId: `${order.id}:${fk.id}` })
+    model.rounds = [[text('A customer has many orders.'), done()]]
+    await useAi.getState().send('explain this relation')
+    expect(model.bodies[0].focus.relations).toEqual([{ table: 'order', column: 'customer_id' }])
+    expect(model.bodies[0].messages.at(-1).content).toContain('relation order.customer_id \u2192 customer.id')
+    useStore.setState({ manyToMany: [{ id: 'l1', aTableId: customer.id, bTableId: order.id }], selectedEdgeId: 'm2m:l1' })
+    model.rounds = [[text('ok then'), done()]]
+    await useAi.getState().send('and this link?')
+    expect(model.bodies.at(-1).focus.manyToMany).toEqual([{ a: 'customer', b: 'order' }])
+  })
+
+  it('sends no focus when nothing is picked', async () => {
+    await build()
+    useStore.setState({ nodes: useStore.getState().nodes.map((n) => ({ ...n, selected: false })), selectedColumn: null, selectedEdgeId: null })
+    model.rounds = [[text('hi'), done()]]
+    await useAi.getState().send('hello')
+    expect(model.bodies[0].focus).toBeUndefined()
+    expect(model.bodies[0].messages.at(-1).content).toBe('hello')
+  })
+
+  it('a refine ignores what happens to be picked (it is about the whole schema)', async () => {
+    await build()
+    useStore.setState({ nodes: useStore.getState().nodes.map((n) => ({ ...n, selected: true })) })
+    model.rounds = [[text('done'), done()]]
+    await useAi.getState().send('Refine my schema', { refine: { tool: 'sql', database: 'mysql' }, display: 'Refine for production' })
+    expect(model.bodies[0].focus).toBeUndefined()
+    expect(model.bodies[0].messages.at(-1).content).toBe('Refine my schema')
+    expect(useAi.getState().messages.find((m) => m.refine)?.about).toBeUndefined()
+  })
+
+  it('"Refine" sends the tool and database on every round, with the schema in the message and a short label on screen', async () => {
+    await build()
+    model.rounds = [[tool('r', 'alter_table', { table: 'customer', updateColumns: [{ name: 'id', type: 'UUID' }] }), done('tool_calls')], [text('IDs are now UUIDs.'), done()]]
+    await useAi.getState().send('Refine my schema for production.\nTarget tool: Prisma\n```prisma\nmodel X {}\n```', { refine: { tool: 'prisma', database: 'postgresql' }, display: 'Refine for production · Prisma · PostgreSQL' })
+    for (const body of model.bodies.slice(0, 2)) expect(body.refine).toEqual({ tool: 'prisma', database: 'postgresql' })
+    expect(model.bodies[0].messages.at(-1).content).toContain('Target tool: Prisma')
+    const shown = useAi.getState().messages.find((m) => m.role === 'user' && m.refine)!
+    expect(shown.text).toBe('Refine for production · Prisma · PostgreSQL')
+    // The change worked, and the foreign key followed the new key type.
+    const order = useStore.getState().nodes.find((n) => n.data.name === 'order')!.data
+    expect(order.columns[1].type).toBe('UUID')
+  })
+})
+
+describe('checking its own work', () => {
+  const change = [tool('c', 'create_tables', { tables: [makeTable('a'), makeTable('b')] }), done('tool_calls')]
+
+  it('a model that can see gets the screenshot and a layout report, and "OK" is not shown as an answer', async () => {
+    model.vision = true
+    setCanvasCapture(async () => SHOT)
+    model.rounds = [change, [text('Created a and b.'), done()], [text('OK'), done()]]
+    await sendWith('make a and b')
+    const check = model.bodies[2].messages.at(-1)
+    expect(check.role).toBe('user')
+    expect(check.images).toEqual([SHOT])
+    expect(check.content).toMatch(/Automatic check/)
+    expect(check.content).toMatch(/No overlapping tables/)
+    const m = last()
+    expect(m.text).toBe('Created a and b.') // the OK stays out of the conversation on screen
+    expect(m.checks).toEqual([expect.objectContaining({ status: 'ok', image: SHOT })])
+    expect(useAi.getState().busy).toBe(false)
+  })
+
+  it('what it sees makes it fix the canvas, and it looks again', async () => {
+    model.vision = true
+    let shots = 0
+    setCanvasCapture(async () => `${SHOT}${++shots}`)
+    model.rounds = [
+      change,
+      [text('Done.'), done()],
+      [tool('m', 'move_tables', { moves: [{ table: 'b', nextTo: { table: 'a', side: 'right' } }] }), done('tool_calls')],
+      [text('Moved b.'), done()],
+      [text('OK'), done()],
+    ]
+    await sendWith('go')
+    expect(shots).toBe(2)
+    expect(last().checks!.map((c) => c.status)).toEqual(['fixing', 'ok'])
+    expect(last().tools!.map((t) => t.name)).toEqual(['create_tables', 'move_tables'])
+    // Only the newest screenshot travels: the older one is stale and costs thousands of tokens.
+    const last_ = model.bodies.at(-1).messages
+    expect(last_.filter((m: any) => m.images?.length)).toHaveLength(1)
+    expect(last_.find((m: any) => m.images?.length).images).toEqual([`${SHOT}2`])
+  })
+
+  it('looks at most twice, however the model answers', async () => {
+    model.vision = true
+    setCanvasCapture(async () => SHOT)
+    const fix = [tool('f', 'auto_layout', {}), done('tool_calls')]
+    model.rounds = [change, [text('Done.'), done()], fix, [text('Better.'), done()], fix, [text('Better still.'), done()]]
+    await sendWith('go')
+    expect(last().checks).toHaveLength(2)
+    expect(model.rounds).toHaveLength(0) // every scripted call was used, none more
+  })
+
+  it('a model that cannot see is only checked when the layout report finds a problem', async () => {
+    setCanvasCapture(async () => SHOT)
+    model.rounds = [change, [text('Done.'), done()]]
+    await sendWith('go')
+    expect(model.bodies).toHaveLength(2) // clean layout: no extra call
+    expect(last().checks).toEqual([])
+
+    useStore.getState().clear()
+    useAi.getState().newChat()
+    const overlap = [tool('c', 'create_tables', { tables: [makeTable('a'), makeTable('b')] }), tool('z', 'move_tables', { moves: [{ table: 'b', x: 0, y: 0 }, { table: 'a', x: 10, y: 10 }] }), done('tool_calls')]
+    model.bodies = []
+    model.rounds = [overlap, [text('Done.'), done()], [text('OK'), done()]]
+    await sendWith('go again')
+    const check = model.bodies[2].messages.at(-1)
+    expect(check.images).toBeUndefined() // no picture for a model that cannot see
+    expect(check.content).toMatch(/Tables overlap: b and a|Tables overlap: a and b/)
+  })
+
+  it('questions and failed changes are not checked', async () => {
+    model.vision = true
+    setCanvasCapture(async () => SHOT)
+    model.rounds = [[text('Because customers have orders.'), done()]]
+    await sendWith('why?')
+    expect(model.bodies).toHaveLength(1)
+    model.rounds = [[tool('x', 'drop_tables', { tables: ['nothing'] }), done('tool_calls')], [text('I could not.'), done()]]
+    model.bodies = []
+    await sendWith('drop it')
+    expect(model.bodies).toHaveLength(2)
+  })
+
+  it('a screenshot that cannot be drawn does not stop the check', async () => {
+    model.vision = true
+    setCanvasCapture(async () => {
+      throw new Error('no canvas')
+    })
+    model.rounds = [change, [text('Done.'), done()]]
+    await sendWith('go')
+    expect(model.bodies).toHaveLength(2) // no picture and a clean report: nothing to ask
+  })
+
+  it('stopping during the check ends cleanly and leaves a valid conversation', async () => {
+    model.vision = true
+    setCanvasCapture(async () => SHOT)
+    model.rounds = [
+      change,
+      [text('Done.'), done()],
+      async function* (signal) {
+        await new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))
+      },
+    ]
+    await useAi.getState().loadModels()
+    const sending = useAi.getState().send('go')
+    await vi.waitFor(() => expect(useAi.getState().messages.at(-1)?.checks?.length).toBe(1))
+    useAi.getState().stop()
+    await sending
+    expect(last().checks![0].status).not.toBe('checking')
+    model.rounds = [[text('fine'), done()]]
+    await useAi.getState().send('next')
+    const roles = model.bodies.at(-1).messages.map((m: any) => m.role)
+    expect(roles.at(-1)).toBe('user')
+    expect(model.bodies.at(-1).messages.some((m: any) => /Automatic check/.test(m.content ?? ''))).toBe(false) // the unanswered check is gone
   })
 })

@@ -1,7 +1,7 @@
-import type { CanvasSnapshot, ChatMessage } from '../../../shared/aiToolSpecs'
+import type { CanvasSnapshot, ChatMessage, FocusSnapshot, RefineRequest } from '../../../shared/aiToolSpecs'
 import { api, ApiError, BASE } from '../auth/api'
 
-export type ModelOption = { id: string; label: string; maker: string; tier: 'fast' | 'smart'; contextTokens?: number }
+export type ModelOption = { id: string; label: string; maker: string; tier: 'fast' | 'smart'; contextTokens?: number; vision?: boolean }
 export type ModelsResponse = {
   enabled: boolean
   models: ModelOption[]
@@ -21,7 +21,7 @@ export type ServerEvent =
   | { type: 'done'; finishReason: string }
   | { type: 'error'; code: string; message: string }
 
-export type ChatBody = { model?: string; canvas: CanvasSnapshot; messages: ChatMessage[] }
+export type ChatBody = { model?: string; canvas: CanvasSnapshot; messages: ChatMessage[]; focus?: FocusSnapshot; refine?: RefineRequest }
 
 /**
  * One model call. A failure before the stream starts (not signed in, daily limit, bad request) is thrown as an ApiError

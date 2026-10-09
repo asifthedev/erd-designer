@@ -42,7 +42,7 @@ const liveDeps = (): Deps => ({
 
 const limitFor = (s: EffectiveAi, free: boolean) => (free ? s.dailyLimitFree : s.dailyLimitPaid)
 
-const toPublic = (m: ModelInfo) => ({ id: m.id, label: m.label, maker: m.maker, tier: m.tier, contextTokens: m.contextTokens })
+const toPublic = (m: ModelInfo) => ({ id: m.id, label: m.label, maker: m.maker, tier: m.tier, contextTokens: m.contextTokens, vision: m.vision })
 
 export function createAiRouter(overrides: Partial<Deps> = {}) {
   const deps = { ...liveDeps(), ...overrides }
@@ -65,7 +65,7 @@ export function createAiRouter(overrides: Partial<Deps> = {}) {
     })
   })
 
-  router.post('/chat', aiLimiter, express.json({ limit: '1mb' }), async (req, res) => {
+  router.post('/chat', aiLimiter, express.json({ limit: '6mb' }), async (req, res) => {
     const input = chatRequestSchema.parse(req.body)
     const conversationProblem = checkConversation(input.messages)
     if (conversationProblem) {
@@ -164,7 +164,7 @@ async function stream(res: Response, deps: Deps, job: Job) {
       job.chain,
       {
         systemStatic: SYSTEM_STATIC,
-        systemDynamic: systemDynamic(job.body.canvas),
+        systemDynamic: systemDynamic(job.body.canvas, job.body.focus, job.body.refine),
         messages: job.body.messages,
         tools: TOOL_SPECS,
         maxTokens: MAX_OUTPUT_TOKENS,

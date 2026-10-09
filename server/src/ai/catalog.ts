@@ -18,6 +18,8 @@ export type ModelInfo = {
   /** "fast" models are cheap: the only ones the Free plan may use. */
   tier: Tier
   contextTokens?: number
+  /** Can read an image: only these get the screenshot of the canvas. */
+  vision: boolean
 }
 
 const MAKERS: Record<string, string> = {
@@ -59,9 +61,9 @@ export const DEFAULT_GATEWAY_MODELS = [
 ]
 
 export const DIRECT_ANTHROPIC_MODELS: ModelInfo[] = [
-  { id: 'anthropic:claude-sonnet-5-5', label: 'Claude Sonnet 5.5 (direct)', maker: 'Anthropic', route: 'anthropic', upstream: 'claude-sonnet-5-5', tier: 'smart', contextTokens: 200_000 },
-  { id: 'anthropic:claude-opus-5-5', label: 'Claude Opus 5.5 (direct)', maker: 'Anthropic', route: 'anthropic', upstream: 'claude-opus-5-5', tier: 'smart', contextTokens: 200_000 },
-  { id: 'anthropic:claude-haiku-5-5', label: 'Claude Haiku 5.5 (direct)', maker: 'Anthropic', route: 'anthropic', upstream: 'claude-haiku-5-5', tier: 'fast', contextTokens: 200_000 },
+  { id: 'anthropic:claude-sonnet-5-5', label: 'Claude Sonnet 5.5 (direct)', maker: 'Anthropic', route: 'anthropic', upstream: 'claude-sonnet-5-5', tier: 'smart', contextTokens: 200_000, vision: true },
+  { id: 'anthropic:claude-opus-5-5', label: 'Claude Opus 5.5 (direct)', maker: 'Anthropic', route: 'anthropic', upstream: 'claude-opus-5-5', tier: 'smart', contextTokens: 200_000, vision: true },
+  { id: 'anthropic:claude-haiku-5-5', label: 'Claude Haiku 5.5 (direct)', maker: 'Anthropic', route: 'anthropic', upstream: 'claude-haiku-5-5', tier: 'fast', contextTokens: 200_000, vision: true },
 ]
 
 /** One gateway entry from AI_MODELS: "company/model" or "company/model|fast". */
@@ -75,12 +77,15 @@ export function gatewayModel(slug: string, tier: Tier, found?: DiscoveredModel):
   const [company, ...rest] = slug.split('/')
   const maker = MAKERS[company] ?? title(company)
   const name = found?.name?.replace(/^[^:]+:\s*/, '') || title(rest.join('/') || slug)
-  return { id: slug, label: name, maker, route: 'gateway', upstream: slug, tier, contextTokens: found?.contextLength }
+  return { id: slug, label: name, maker, route: 'gateway', upstream: slug, tier, contextTokens: found?.contextLength, vision: found?.vision ?? guessVision(slug) }
 }
 
 // ---- Discovery: what the gateway really has, and which of it can call tools -------------------------------------------
 
-export type DiscoveredModel = { id: string; name?: string; contextLength?: number; supportsTools: boolean }
+export type DiscoveredModel = { id: string; name?: string; contextLength?: number; supportsTools: boolean; vision?: boolean }
+
+/** When a gateway does not say what a model can read, the families known to read images are assumed to. */
+export const guessVision = (id: string) => /claude|gpt-4o|gpt-4\.1|gpt-5|gemini|pixtral|llama-4|grok-4|qwen.*vl|vision/i.test(id)
 
 type Discovery = { at: number; models: Map<string, DiscoveredModel> | null }
 let cache: (Discovery & { key: string }) | null = null
@@ -97,8 +102,10 @@ export function parseModelList(body: unknown): Map<string, DiscoveredModel> {
     const params = m.supported_parameters
     // Without a parameter list the gateway doesn't say; trust the entry. With one, "tools" must be in it.
     const supportsTools = Array.isArray(params) ? params.includes('tools') : m.type === undefined || m.type === 'language'
+    const modalities = (m.architecture as { input_modalities?: unknown } | undefined)?.input_modalities
     out.set(m.id, {
       id: m.id,
+      vision: Array.isArray(modalities) ? modalities.includes('image') : undefined,
       name: typeof m.name === 'string' ? m.name : undefined,
       contextLength: typeof m.context_length === 'number' ? m.context_length : undefined,
       supportsTools,

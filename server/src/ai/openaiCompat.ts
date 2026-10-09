@@ -14,7 +14,14 @@ export const flavorOf = (baseUrl: string): Flavor => (/(^|\.)openrouter\.ai$/.te
 export function toOpenAiMessages(req: UpstreamRequest) {
   const out: unknown[] = [{ role: 'system', content: `${req.systemStatic}\n\n${req.systemDynamic}` }]
   for (const m of req.messages as ChatMessage[]) {
-    if (m.role === 'user') out.push({ role: 'user', content: m.content })
+    if (m.role === 'user') {
+      out.push({
+        role: 'user',
+        content: m.images?.length
+          ? [{ type: 'text', text: m.content }, ...m.images.map((url) => ({ type: 'image_url', image_url: { url } }))]
+          : m.content,
+      })
+    }
     else if (m.role === 'tool') out.push({ role: 'tool', tool_call_id: m.toolCallId, content: m.content })
     else {
       out.push({

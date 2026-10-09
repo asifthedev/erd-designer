@@ -21,6 +21,9 @@ export const TOOL_NAMES = [
   'remove_relation',
   'set_database',
   'auto_layout',
+  'move_tables',
+  'add_many_to_many',
+  'remove_many_to_many',
   'create_diagram',
 ] as const
 export type ToolName = (typeof TOOL_NAMES)[number]
@@ -183,6 +186,66 @@ export const TOOL_SPECS: ToolSpec[] = [
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
+    name: 'move_tables',
+    description:
+      'Move tables on the canvas: to exact coordinates (canvas pixels; a table is about 680 wide and about 56 + 43 per column tall) ' +
+      'or next to another table. Use it to fix overlaps or to group related tables. Prefer auto_layout when everything is messy.',
+    parameters: {
+      type: 'object',
+      properties: {
+        moves: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            properties: {
+              table: str('Table to move.'),
+              x: { type: 'number', description: 'New left edge.' },
+              y: { type: 'number', description: 'New top edge.' },
+              nextTo: {
+                type: 'object',
+                description: 'Place it beside another table instead of using x / y.',
+                properties: {
+                  table: str('The table to stand next to.'),
+                  side: { type: 'string', enum: ['right', 'left', 'below', 'above'] },
+                  gap: { type: 'number', description: 'Space between them in pixels (default 200 sideways, 80 vertically).' },
+                },
+                required: ['table', 'side'],
+                additionalProperties: false,
+              },
+            },
+            required: ['table'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['moves'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'add_many_to_many',
+    description:
+      'Link two tables many-to-many with an implicit relation (shown as a dashed line; Prisma creates the join table itself). ' +
+      'Use a junction table with two foreign keys instead when the link carries data of its own (quantity, date, role).',
+    parameters: {
+      type: 'object',
+      properties: { tableA: str('One table.'), tableB: str('The other table (may be the same table).') },
+      required: ['tableA', 'tableB'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'remove_many_to_many',
+    description: 'Remove the implicit many-to-many link between two tables.',
+    parameters: {
+      type: 'object',
+      properties: { tableA: str('One table.'), tableB: str('The other table.') },
+      required: ['tableA', 'tableB'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'create_diagram',
     description:
       'Start a NEW saved ERD (a separate diagram in the user\'s account) and switch the canvas to it. It starts empty; ' +
@@ -217,9 +280,24 @@ export type CanvasSnapshot = {
   title?: string
 }
 
+/** What the person has picked on the canvas, by name: the question they type is about these. */
+export type FocusSnapshot = {
+  tables: string[]
+  columns: { table: string; column: string }[]
+  /** A foreign key, named by the table and column that hold it. */
+  relations: { table: string; column: string }[]
+  manyToMany: { a: string; b: string }[]
+}
+
+/** "Refine for production": which ORM / tool the schema is written for and which database it runs on. */
+export const REFINE_TOOLS = ['prisma', 'drizzle', 'sql'] as const
+export type RefineTool = (typeof REFINE_TOOLS)[number]
+export type RefineRequest = { tool: RefineTool; database: (typeof DATABASES)[number] }
+
 /** The wire format between the web app and POST /api/ai/chat. */
 export type ChatToolCall = { id: string; name: string; arguments: string }
 export type ChatMessage =
-  | { role: 'user'; content: string }
+  /** `images` are data: URLs (the canvas as the person sees it); only sent to models that can see. */
+  | { role: 'user'; content: string; images?: string[] }
   | { role: 'assistant'; content: string; toolCalls?: ChatToolCall[] }
   | { role: 'tool'; toolCallId: string; name: string; content: string }

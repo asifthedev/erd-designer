@@ -1,14 +1,18 @@
 import type { Table } from '../core/model'
+import { linesBehindTables } from './layoutReport'
+import { TABLE_WIDTH, tableHeight } from './tableSize'
+
+export { TABLE_WIDTH, tableHeight }
 
 /** Tables are about this wide and this tall on the canvas (a header plus one row per column); the gap leaves a lane for the lines. */
-export const TABLE_WIDTH = 680
 export const COLUMN_GAP = 220
 export const ROW_GAP = 80
-const HEADER = 56
-const ROW = 43
 const MAX_COLUMN_HEIGHT = 2400
+/** Extra space a table may be given above it, to step clear of a long line running past. */
+const GAPS = [0, 160, 360, 640]
+/** The tidying search never takes longer than this: a very tangled schema gets the best layout found in time, not a frozen page. */
+const SEARCH_BUDGET_MS = 400
 
-export const tableHeight = (t: Pick<Table, 'columns'>) => HEADER + ROW * t.columns.length
 
 export type Placed = { id: string; x: number; y: number }
 
@@ -68,26 +72,77 @@ export function layoutTables(tables: Table[], origin = { x: 0, y: 0 }): Placed[]
     members.forEach((t, i) => rank.set(t.id, (i + 0.5) / members.length))
   })
 
-  const out: Placed[] = []
-  let x = origin.x
-  for (const members of layers) {
-    if (!members) continue
-    let y = origin.y
-    let columnHeight = 0
-    for (const t of members) {
-      const h = tableHeight(t)
-      if (columnHeight > 0 && columnHeight + h > MAX_COLUMN_HEIGHT) {
-        x += TABLE_WIDTH + COLUMN_GAP
-        y = origin.y
-        columnHeight = 0
+  /** Stacks each layer's tables in its column, wrapping a tall column into a second one. */
+  const gapBefore = new Map<string, number>()
+  const place = (order: Table[][]): Placed[] => {
+    const out: Placed[] = []
+    let x = origin.x
+    for (const members of order) {
+      if (!members) continue
+      let y = origin.y
+      let columnHeight = 0
+      for (const t of members) {
+        const h = tableHeight(t)
+        if (columnHeight > 0 && columnHeight + h > MAX_COLUMN_HEIGHT) {
+          x += TABLE_WIDTH + COLUMN_GAP
+          y = origin.y
+          columnHeight = 0
+        }
+        const extra = gapBefore.get(t.id) ?? 0
+        y += extra
+        columnHeight += extra
+        out.push({ id: t.id, x, y })
+        y += h + ROW_GAP
+        columnHeight += h + ROW_GAP
       }
-      out.push({ id: t.id, x, y })
-      y += h + ROW_GAP
-      columnHeight += h + ROW_GAP
+      x += TABLE_WIDTH + COLUMN_GAP
     }
-    x += TABLE_WIDTH + COLUMN_GAP
+    return out
   }
-  return out
+
+  // A line between layers that are not neighbours crosses the layers in between, and can end up behind a table that
+  // stands there. The lines are checked the way they are drawn: every table that is in some line's way is tried at each
+  // position of its column, and kept where the fewest lines are behind a table (the middle of a column is where the
+  // long lines run). A few passes; stops as soon as nothing is behind anything or nothing improves.
+  const order = layers.map((members) => members?.slice())
+  const problemsOf = (o: Table[][]) => {
+    const at = new Map(place(o).map((p) => [p.id, p]))
+    return linesBehindTables(tables.map((t) => ({ table: t, x: at.get(t.id)!.x, y: at.get(t.id)!.y })))
+  }
+  const deadline = performance.now() + SEARCH_BUDGET_MS
+  let hits = problemsOf(order)
+  for (let pass = 0; pass < 6 && hits.length && performance.now() < deadline; pass++) {
+    let best = hits.length
+    let improved = false
+    for (const id of new Set(hits.map((h) => h.tableId))) {
+      if (performance.now() > deadline) break
+      const members = order.find((m) => m?.some((t) => t.id === id))!
+      const from = members.findIndex((t) => t.id === id)
+      const [table] = members.splice(from, 1)
+      let bestAt = from
+      let bestGap = gapBefore.get(id) ?? 0
+      for (let i = 0; i <= members.length; i++) {
+        members.splice(i, 0, table)
+        for (const gap of GAPS) {
+          gapBefore.set(id, gap)
+          const n = problemsOf(order).length
+          if (n < best) {
+            best = n
+            bestAt = i
+            bestGap = gap
+            improved = true
+          }
+        }
+        members.splice(i, 1)
+      }
+      members.splice(bestAt, 0, table)
+      gapBefore.set(id, bestGap)
+    }
+    hits = problemsOf(order)
+    if (!improved) break
+  }
+  const placed = place(order)
+  return placed
 }
 
 /** The right edge of the existing tables, so new ones can start beside them. */

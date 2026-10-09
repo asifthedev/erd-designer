@@ -3,6 +3,7 @@ import {
   ArrowRight,
   Info,
   Link2,
+  Sparkles,
   Lock,
   RefreshCw,
   Split,
@@ -96,6 +97,8 @@ function Header({
   onResetShape?: () => void
   children?: ReactNode
 }) {
+  const edgeId = useStore((s) => s.selectedEdgeId)
+  const askAbout = useStore((s) => s.askAbout)
   return (
     <header className="flex items-center gap-2">
       <Link2 size={18} className="text-key" />
@@ -104,13 +107,24 @@ function Header({
         {badge}
       </span>
       {children}
+      {edgeId && (
+        <button
+          type="button"
+          title="Ask the AI about this relation"
+          aria-label="Ask the AI about this relation"
+          onClick={() => askAbout({ kind: 'relation', id: edgeId })}
+          className="ml-auto flex cursor-pointer items-center gap-1 rounded-md border border-line px-2 py-1 text-[12.5px] text-muted hover:border-key hover:text-key"
+        >
+          <Sparkles size={13} /> Ask AI
+        </button>
+      )}
       {onResetShape && (
         <button
           type="button"
           title="Reset line shape (it was moved by hand)"
           aria-label="Reset line shape"
           onClick={onResetShape}
-          className="ml-auto grid size-8 cursor-pointer place-items-center rounded-md text-muted hover:bg-hover hover:text-ink"
+          className="grid size-8 cursor-pointer place-items-center rounded-md text-muted hover:bg-hover hover:text-ink"
         >
           <Undo2 size={16} />
         </button>
@@ -120,7 +134,7 @@ function Header({
         title="Remove relation"
         aria-label="Remove relation"
         onClick={onDelete}
-        className={`${onResetShape ? '' : 'ml-auto'} grid size-8 cursor-pointer place-items-center rounded-md text-muted hover:bg-danger/15 hover:text-danger`}
+        className="grid size-8 cursor-pointer place-items-center rounded-md text-muted hover:bg-danger/15 hover:text-danger"
       >
         <Trash2 size={16} />
       </button>

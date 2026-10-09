@@ -1,14 +1,24 @@
 import { useReactFlow } from '@xyflow/react'
-import { AlertTriangle, ArrowUp, Check, Lock, Plus, Sparkles, Square, Undo2, X } from 'lucide-react'
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { useAi, type UiMessage } from '../ai/agent'
+import { AlertTriangle, ArrowUp, Check, Eye, Lock, Plus, Sparkles, Square, Undo2, Wand2, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import type { RefineTool } from '../../../shared/aiToolSpecs'
+import { setCanvasCapture, useAi, type CheckChip, type UiMessage } from '../ai/agent'
+import { pickedItems, suggestionsFor, type FocusItem } from '../ai/focus'
+import { captureCanvas } from '../ai/screenshot'
 import { useAuth } from '../auth/store'
+import { generateDrizzle } from '../core/drizzle'
+import { PROVIDERS, type Provider } from '../core/model'
+import { generatePrisma } from '../core/prisma'
+import { generateSql } from '../core/sql'
 import { navigate } from '../lib/route'
-import { useStore } from '../store'
+import { toDiagram, useStore } from '../store'
+import { DbIcon } from './DbIcon'
 import { RichText } from './RichText'
 import { Select } from './Select'
 
 const MAX_INPUT = 40_000
+/** More picked things than this are shown as "+N more" (the question is still about all of them). */
+const MAX_CHIPS = 6
 
 const STARTERS_EMPTY = [
   'Design a database for an online store with customers, products, orders and payments',
@@ -22,22 +32,44 @@ const STARTERS_FILLED = [
   'Arrange the tables so the relation lines are easy to follow',
 ]
 
+const REFINE_TOOLS: { id: RefineTool; label: string; file: string; fence: string }[] = [
+  { id: 'prisma', label: 'Prisma', file: 'schema.prisma', fence: 'prisma' },
+  { id: 'drizzle', label: 'Drizzle', file: 'schema.ts', fence: 'ts' },
+  { id: 'sql', label: 'SQL', file: 'schema.sql', fence: 'sql' },
+]
+const DB_LABEL: Record<Provider, string> = { postgresql: 'PostgreSQL', mysql: 'MySQL', sqlite: 'SQLite' }
+/** A schema longer than this is cut: the model reads the canvas itself, the code is there to show the tool's own shape. */
+const MAX_CODE_CHARS = 30_000
+
 /** The assistant's chat: lives in the side panel, next to the canvas it reads and edits. */
 export function AiPanel() {
   const toggleAi = useStore((s) => s.toggleAi)
   const tableCount = useStore((s) => s.nodes.length)
+  const nodes = useStore((s) => s.nodes)
+  const manyToMany = useStore((s) => s.manyToMany)
+  const selectedColumn = useStore((s) => s.selectedColumn)
+  const selectedEdgeId = useStore((s) => s.selectedEdgeId)
   const status = useAuth((s) => s.status)
   const currentId = useAuth((s) => s.currentId)
   const ai = useAi()
   const flow = useReactFlow()
   const [draft, setDraft] = useState('')
+  const [refineOpen, setRefineOpen] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const stick = useRef(true)
   const authed = status === 'authed'
+  const picked = useMemo(() => pickedItems({ nodes, manyToMany, selectedColumn, selectedEdgeId }), [nodes, manyToMany, selectedColumn, selectedEdgeId])
 
   useEffect(() => {
     if (authed) void useAi.getState().loadModels()
   }, [authed])
+
+  // Lets the assistant look at the canvas after it changed it (it is drawn from here because this is inside React Flow).
+  useEffect(() => {
+    setCanvasCapture(() => captureCanvas(flow))
+    return () => setCanvasCapture(null)
+  }, [flow])
 
   // Another diagram opened by the person: the conversation was about the old one. (The assistant's own switch keeps it.)
   const lastDiagram = useRef(currentId)
@@ -58,6 +90,14 @@ export function AiPanel() {
     if (el && stick.current) el.scrollTop = el.scrollHeight
   }, [ai.messages])
 
+  // "Ask AI about this" opened the panel on purpose: the cursor goes to the message box.
+  const askedFor = useRef(picked.items.map((i) => i.key).join('|'))
+  useEffect(() => {
+    const key = picked.items.map((i) => i.key).join('|')
+    if (key !== askedFor.current && key) inputRef.current?.focus({ preventScroll: true })
+    askedFor.current = key
+  }, [picked.items])
+
   const submit = (text = draft) => {
     if (!text.trim() || ai.busy) return
     setDraft('')
@@ -71,8 +111,27 @@ export function AiPanel() {
     }
   }
 
+  /** A chip's X: stop asking about that one (it is un-picked on the canvas too, so the two never disagree). */
+  const drop = (item: FocusItem) => {
+    const s = useStore.getState()
+    if (item.kind === 'table') {
+      const id = item.key.slice('table:'.length)
+      useStore.setState({ nodes: s.nodes.map((n) => (id === 'more' || n.id === id ? { ...n, selected: false } : n)) })
+    } else if (item.kind === 'column') s.setSelectedColumn(null)
+    else s.selectEdge(null)
+  }
+
+  const clearPicks = () => {
+    const s = useStore.getState()
+    useStore.setState({ nodes: s.nodes.map((n) => (n.selected ? { ...n, selected: false } : n)) })
+    s.setSelectedColumn(null)
+    s.selectEdge(null)
+  }
+
   const left = ai.quota ? Math.max(ai.quota.limit - ai.quota.used, 0) : null
   const btn = 'grid size-7 cursor-pointer place-items-center rounded-sm border border-line text-muted hover:border-key hover:text-key'
+  const suggestions = suggestionsFor(picked.items)
+  const sees = ai.models.find((m) => m.id === ai.modelId)?.vision === true
 
   return (
     <section className="flex min-h-0 flex-1 flex-col" aria-label="AI assistant">
@@ -110,6 +169,11 @@ export function AiPanel() {
         <>
           <div className="flex items-center gap-2 border-b border-line px-3 py-1.5">
             <span className="text-[12px] text-muted">Model</span>
+            {sees && (
+              <span title="This model can look at a picture of your canvas to check its work" className="text-muted">
+                <Eye size={13} aria-label="Can see the canvas" />
+              </span>
+            )}
             <Select
               aria-label="AI model"
               value={ai.modelId ?? ''}
@@ -144,14 +208,51 @@ export function AiPanel() {
             </div>
           )}
 
+          {refineOpen && (
+            <RefineCard
+              onClose={() => setRefineOpen(false)}
+              onStart={(tool, database) => {
+                setRefineOpen(false)
+                stick.current = true
+                void ai.send(refineMessage(tool, database), { refine: { tool, database }, display: `Refine for production · ${REFINE_TOOLS.find((t) => t.id === tool)!.label} · ${DB_LABEL[database]}` })
+              }}
+            />
+          )}
+
           <div className="border-t border-line p-3">
+            {picked.items.length > 0 && (
+              <div className="mb-2" aria-label="What your question is about">
+                <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                  <span className="text-[12px] text-muted">Asking about</span>
+                  {picked.items.slice(0, MAX_CHIPS).map((item) => (
+                    <FocusChip key={item.key} item={item} onDrop={() => drop(item)} />
+                  ))}
+                  {picked.items.length > MAX_CHIPS && <span className="text-[12px] text-muted">+{picked.items.length - MAX_CHIPS} more</span>}
+                  {picked.items.length > 1 && (
+                    <button type="button" onClick={clearPicks} className="cursor-pointer text-[12px] text-muted underline hover:text-ink">
+                      Clear
+                    </button>
+                  )}
+                </div>
+                {!ai.busy && suggestions.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {suggestions.map((s) => (
+                      <button key={s} type="button" onClick={() => submit(s)} className="cursor-pointer rounded-full border border-line px-2.5 py-0.5 text-[12.5px] text-muted hover:border-key hover:text-key">
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="flex items-end gap-2 rounded-lg border border-line bg-canvas p-2 focus-within:border-key">
               <textarea
+                ref={inputRef}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value.slice(0, MAX_INPUT))}
                 onKeyDown={onKeyDown}
                 rows={2}
-                placeholder="Describe what to build, paste a schema, or ask about the diagram…"
+                placeholder={picked.items.length ? 'Ask about what you picked…' : 'Describe what to build, paste a schema, or ask about the diagram…'}
                 aria-label="Message to the AI assistant"
                 className="max-h-40 min-h-[2.75rem] flex-1 resize-none bg-transparent px-1 text-[14px] outline-none placeholder:text-muted"
                 disabled={left === 0}
@@ -174,10 +275,16 @@ export function AiPanel() {
               )}
             </div>
             <p className="mt-1.5 flex items-center gap-2 text-[11.5px] text-muted">
-              <span>Enter to send · Shift+Enter for a new line</span>
-              {left !== null && (
-                <span className={`ml-auto ${left === 0 ? 'text-danger' : ''}`}>{left === 0 ? 'No requests left today' : `${left} requests left today`}</span>
-              )}
+              <button
+                type="button"
+                onClick={() => setRefineOpen((o) => !o)}
+                disabled={!tableCount || ai.busy || left === 0}
+                title={tableCount ? 'Rewrite the schema to production best practice' : 'Add tables first'}
+                className="flex cursor-pointer items-center gap-1 rounded-sm border border-line px-1.5 py-0.5 text-[12px] hover:border-key hover:text-key disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Wand2 size={12} /> Refine for production
+              </button>
+              {left !== null && <span className={`ml-auto ${left === 0 ? 'text-danger' : ''}`}>{left === 0 ? 'No requests left today' : `${left} requests left today`}</span>}
             </p>
             {ai.locked.length > 0 && (
               <p className="mt-1 text-[11.5px] text-muted">
@@ -191,6 +298,80 @@ export function AiPanel() {
         </>
       )}
     </section>
+  )
+}
+
+/** The message that carries the schema as the chosen tool generates it, so the assistant refines what the person would really ship. */
+function refineMessage(tool: RefineTool, database: Provider): string {
+  const s = useStore.getState()
+  const diagram = toDiagram(s.provider, s.nodes, s.manyToMany)
+  const generated = tool === 'sql' ? generateSql(diagram).sql : tool === 'drizzle' ? generateDrizzle(diagram).schema : generatePrisma(diagram).schema
+  const info = REFINE_TOOLS.find((t) => t.id === tool)!
+  const code = generated.length > MAX_CODE_CHARS ? `${generated.slice(0, MAX_CODE_CHARS)}\n... (cut: ${generated.length - MAX_CODE_CHARS} more characters; the canvas has everything)` : generated
+  return (
+    `Refine my schema for production.\nTarget tool: ${info.label}\nTarget database: ${DB_LABEL[database]}` +
+    `${database !== s.provider ? ` (the canvas is currently set to ${DB_LABEL[s.provider]}; switch it)` : ''}\n\n` +
+    `This is the schema as ${info.label} generates it today (${info.file}):\n\`\`\`${info.fence}\n${code}\n\`\`\``
+  )
+}
+
+function RefineCard({ onClose, onStart }: { onClose: () => void; onStart: (tool: RefineTool, database: Provider) => void }) {
+  const provider = useStore((s) => s.provider)
+  const format = useStore((s) => s.codeFormat)
+  const [tool, setTool] = useState<RefineTool>(format)
+  const [database, setDatabase] = useState<Provider>(provider)
+  return (
+    <div className="border-t border-line bg-canvas/60 p-3 text-[13px]">
+      <div className="mb-2 flex items-center gap-2">
+        <Wand2 size={14} className="text-key" aria-hidden />
+        <h3 className="mr-auto font-semibold">Refine for production</h3>
+        <button type="button" onClick={onClose} aria-label="Close" className="cursor-pointer text-muted hover:text-ink">
+          <X size={14} />
+        </button>
+      </div>
+      <p className="mb-2 text-muted">
+        The assistant rewrites your schema the way it should be in production: hard-to-guess ids instead of 1, 2, 3…, the right types, timestamps, constraints, safe delete rules and history snapshots. Tell it what you ship with:
+      </p>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <div role="radiogroup" aria-label="Tool" className="flex overflow-hidden rounded-md border border-line">
+          {REFINE_TOOLS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="radio"
+              aria-checked={tool === t.id}
+              onClick={() => setTool(t.id)}
+              className={`cursor-pointer px-3 py-1 ${tool === t.id ? 'bg-key/15 text-key' : 'text-muted hover:bg-hover'}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <Select
+          aria-label="Database"
+          value={database}
+          onValueChange={setDatabase}
+          options={PROVIDERS.map((p) => ({ value: p, label: DB_LABEL[p], icon: <DbIcon provider={p} /> }))}
+          className="min-w-36"
+        />
+      </div>
+      <button type="button" onClick={() => onStart(tool, database)} className="w-full cursor-pointer rounded-md bg-key px-3 py-1.5 font-medium text-primary-foreground">
+        Refine my schema
+      </button>
+    </div>
+  )
+}
+
+function FocusChip({ item, onDrop }: { item: FocusItem; onDrop: () => void }) {
+  const kind = item.kind === 'many-to-many' ? 'link' : item.kind
+  return (
+    <span className="inline-flex max-w-full items-center gap-1 rounded-full border border-key/40 bg-key/10 py-0.5 pl-2 pr-1 text-[12px] text-ink">
+      <span className="text-muted">{kind}</span>
+      <code className="truncate font-mono">{item.label}</code>
+      <button type="button" onClick={onDrop} aria-label={`Stop asking about ${item.label}`} className="grid size-4 cursor-pointer place-items-center rounded-full text-muted hover:bg-hover hover:text-ink">
+        <X size={11} />
+      </button>
+    </span>
   )
 }
 
@@ -211,7 +392,7 @@ function Empty({ starters, onPick }: { starters: string[]; onPick: (text: string
     <div className="pt-2">
       <p className="mb-1 font-semibold text-ink">What should we build?</p>
       <p className="mb-3 text-muted">
-        Describe a database in plain words, or paste SQL, Prisma or DBML and I will draw it with the right types and relations. I can also change what is already on the canvas and answer questions about it.
+        Describe a database in plain words, or paste SQL, Prisma or DBML and I will draw it with the right types and relations. I can also change what is already on the canvas and answer questions about it. Click a table, a column or a relation line first to ask about exactly that.
       </p>
       <div className="space-y-1.5">
         {starters.map((s) => (
@@ -224,11 +405,45 @@ function Empty({ starters, onPick }: { starters: string[]; onPick: (text: string
   )
 }
 
+function CheckRow({ c }: { c: CheckChip }) {
+  return (
+    <li className="rounded-md border border-line px-2 py-1.5 text-[12.5px] text-muted">
+      <div className="flex items-center gap-1.5">
+        {c.status === 'checking' ? (
+          <span className="size-3 animate-spin rounded-full border-2 border-key border-t-transparent" aria-hidden />
+        ) : c.status === 'ok' ? (
+          <Check size={13} className="text-ok" aria-hidden />
+        ) : (
+          <Eye size={13} className="text-num" aria-hidden />
+        )}
+        <span>{c.note}</span>
+      </div>
+      {c.image && <img src={c.image} alt="The canvas as the assistant checked it" className="mt-1.5 max-h-28 w-full rounded-sm border border-line bg-canvas object-contain" />}
+    </li>
+  )
+}
+
 function Message({ m }: { m: UiMessage }) {
   const navigateToPlans = () => navigate('/pricing')
   if (m.role === 'user') {
     return (
-      <div className="ml-8 whitespace-pre-wrap break-words rounded-lg bg-key/15 px-3 py-2 text-ink">{m.text}</div>
+      <div className="ml-8 break-words rounded-lg bg-key/15 px-3 py-2 text-ink">
+        {m.refine && (
+          <span className="mb-1 flex items-center gap-1 text-[12px] text-key">
+            <Wand2 size={12} aria-hidden /> Refine
+          </span>
+        )}
+        {m.about && m.about.length > 0 && (
+          <div className="mb-1.5 flex flex-wrap gap-1">
+            {m.about.map((a) => (
+              <span key={a} className="rounded-full border border-key/40 px-1.5 text-[11.5px] text-muted">
+                {a}
+              </span>
+            ))}
+          </div>
+        )}
+        <span className="whitespace-pre-wrap">{m.text}</span>
+      </div>
     )
   }
   if (m.role === 'error') {
@@ -263,8 +478,15 @@ function Message({ m }: { m: UiMessage }) {
           ))}
         </ul>
       )}
-      {m.text ? <RichText text={m.text} /> : m.streaming ? <Thinking /> : null}
+      {m.text ? <RichText text={m.text} /> : m.streaming && !(m.checks && m.checks.length) ? <Thinking /> : null}
       {m.streaming && m.text ? <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-key align-middle" aria-hidden /> : null}
+      {m.checks && m.checks.length > 0 && (
+        <ul className="mt-2 space-y-1.5">
+          {m.checks.map((c) => (
+            <CheckRow key={c.id} c={c} />
+          ))}
+        </ul>
+      )}
       {m.notice && <p className="mt-1.5 text-[12px] text-num">{m.notice}</p>}
       {m.model && !m.streaming && <p className="mt-1 text-[11.5px] text-muted">{m.model}</p>}
     </div>

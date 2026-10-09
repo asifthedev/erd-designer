@@ -82,6 +82,22 @@ One gateway key reaches models from many companies. Any OpenAI-compatible gatewa
 | `AI_MAX_DAILY_SPEND_USD` | none | Stops the assistant for everybody for the rest of the day once the gateway reported this much spend (OpenRouter reports cost per call) |
 | `AI_REQUEST_TIMEOUT_MS` | `50000` | Time limit for one answer; keep it below the function's `maxDuration` (60 s in `vercel.json`) |
 
+What the assistant can do for the person:
+
+- **Answer about what is picked.** Whatever is selected on the canvas (tables, the last clicked column, a relation line or many-to-many link; also from "Ask AI" on a table, in a right-click menu, or in a relation's panel) is sent by name with the question, shown as chips, and described to the model with its real neighbours (what it points at, what points at it, one-to-one or many-to-one, required or optional, ON DELETE). It explains the design reason and does not change the canvas unless asked.
+- **Edit everything a person can:** create / change / drop tables and columns, rename, set types, add and remove foreign keys and many-to-many links, switch the database, move tables (`move_tables`), re-arrange (`auto_layout`), start a new diagram. Every call is checked first and refused as a whole with a plain reason the model can act on.
+- **Refine for production.** The panel's *Refine* sends the schema as the chosen tool writes it (Prisma, Drizzle or SQL) plus the chosen database, and a checklist (non-sequential ids, exact money, timestamps, deliberate delete rules, history snapshots, ...) written for that tool and database. Indexes and CHECK constraints cannot be drawn, so they come back as recommendations in the tool's own syntax, never as claims.
+- **Look at its own work.** After it changes the canvas it gets a screenshot of the canvas (models that can see) and a layout report computed with the app's own line router (tables on top of each other, a line running behind a table), and fixes what is wrong, up to twice. A model that cannot see is only asked when the report finds a problem.
+
+Try a real model before you offer it (a few cents; no database or browser needed):
+
+```bash
+AI_GATEWAY_API_KEY=sk-or-... npm run ai:smoke -w server -- --model anthropic/claude-sonnet-4.5
+# --only store,paste,why,refine   --direct (Anthropic's own API with ANTHROPIC_API_KEY)
+```
+
+It runs four scenarios (design a shop, draw a pasted SQL schema, explain a design choice without touching the canvas, refine for production) through the same prompt, tools and executor the app uses, and exits 1 when a check fails. The admin panel's *Try it* button checks one thing only: that the model calls tools.
+
 How it is built (`src/ai`): `catalog.ts` lists models and checks the gateway's live list for tool support; `router.ts` retries a blip once, fails over to another company's model before the first word is shown, and opens a circuit breaker on a model that keeps failing; `openaiCompat.ts` / `anthropic.ts` are the two wire formats; `usage.ts` keeps the daily count in Postgres (reserved atomically, handed back when a model fails before answering). The tools the model may call are defined once in `shared/aiToolSpecs.ts` and run by the web app on the canvas, so unsaved canvases work and the server never edits diagrams behind the person's back. Provider error text is never sent to the browser.
 
 

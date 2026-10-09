@@ -4,7 +4,8 @@ import { checkRelations, isInvalid } from '../core/relations'
 import { resolveSqlType } from '../core/sqlType'
 import { TABLE_ICON_NAMES } from '../components/tableIcons'
 import type { TableNodeType } from '../store'
-import { layoutTables, rightEdge } from './layout'
+import { layoutReport } from './layoutReport'
+import { layoutTables, rightEdge, tableHeight, TABLE_WIDTH } from './layout'
 
 /**
  * Runs one assistant tool call against the canvas. Pure: it takes the canvas and returns the new canvas plus a message
@@ -479,7 +480,85 @@ function autoLayout(canvas: Canvas): Outcome {
   if (!canvas.nodes.length) return fail(canvas, 'The canvas is empty; there is nothing to arrange.')
   const place = new Map(layoutTables(tablesOf(canvas.nodes)).map((p) => [p.id, p]))
   const nodes = canvas.nodes.map((n) => ({ ...n, position: { x: place.get(n.id)!.x, y: place.get(n.id)!.y } }))
-  return { ok: true, summary: 'Arranged the tables', message: `Arranged ${nodes.length} tables.`, canvas: withNodes(canvas, nodes) }
+  const next = withNodes(canvas, nodes)
+  return { ok: true, summary: 'Arranged the tables', message: `Arranged ${nodes.length} tables. ${layoutReport(next).text}`, canvas: next }
+}
+
+const coordinate = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 100_000 ? Math.round(v) : undefined)
+const sizeOf = (n: TableNodeType) => ({ w: n.measured?.width ?? TABLE_WIDTH, h: n.measured?.height ?? tableHeight(n.data) })
+
+function moveTables(canvas: Canvas, args: Obj): Outcome {
+  const moves = list(args.moves)
+  if (!moves.length) return fail(canvas, 'move_tables needs a non-empty "moves" array.')
+  const problems: string[] = []
+  let nodes = canvas.nodes
+  const moved: string[] = []
+  for (const mv of moves) {
+    if (!isObj(mv)) {
+      problems.push('Each move must be an object with "table".')
+      continue
+    }
+    const name = text(mv.table)
+    const node = name ? findTable(nodes, name) : undefined
+    if (!name || !node) {
+      problems.push(name ? noTable(nodes, name) : 'A move needs "table".')
+      continue
+    }
+    let position: { x: number; y: number } | undefined
+    if (isObj(mv.nextTo)) {
+      const anchorName = text(mv.nextTo.table)
+      const anchor = anchorName ? findTable(nodes, anchorName) : undefined
+      const side = mv.nextTo.side
+      if (!anchor || anchor.id === node.id) {
+        problems.push(anchorName ? `Cannot place ${node.data.name} next to ${anchorName}.` : `${node.data.name}: "nextTo" needs a "table".`)
+        continue
+      }
+      if (side !== 'right' && side !== 'left' && side !== 'below' && side !== 'above') {
+        problems.push(`${node.data.name}: "side" must be right, left, below or above.`)
+        continue
+      }
+      const gap = coordinate(mv.nextTo.gap) ?? (side === 'right' || side === 'left' ? 200 : 80)
+      const a = sizeOf(anchor)
+      const me = sizeOf(node)
+      position =
+        side === 'right' ? { x: anchor.position.x + a.w + gap, y: anchor.position.y }
+        : side === 'left' ? { x: anchor.position.x - me.w - gap, y: anchor.position.y }
+        : side === 'below' ? { x: anchor.position.x, y: anchor.position.y + a.h + gap }
+        : { x: anchor.position.x, y: anchor.position.y - me.h - gap }
+    } else {
+      const x = coordinate(mv.x)
+      const y = coordinate(mv.y)
+      if (x === undefined && y === undefined) {
+        problems.push(`${node.data.name}: give "x" and / or "y", or "nextTo".`)
+        continue
+      }
+      position = { x: x ?? node.position.x, y: y ?? node.position.y }
+    }
+    const target = position
+    nodes = nodes.map((n) => (n.id === node.id ? { ...n, position: target } : n))
+    moved.push(`${node.data.name} -> (${target.x}, ${target.y})`)
+  }
+  if (problems.length) return fail(canvas, `Nothing was moved:\n- ${problemsText(problems)}`)
+  const next = withNodes(canvas, nodes)
+  return { ok: true, summary: `Moved ${moved.length} table${moved.length === 1 ? '' : 's'}`, message: `Moved: ${moved.join('; ')}.\n${layoutReport(next).text}`, canvas: next }
+}
+
+function manyToManyLink(canvas: Canvas, args: Obj, ctx: Ctx, remove: boolean): Outcome {
+  const [aName, bName] = [text(args.tableA), text(args.tableB)]
+  if (!aName || !bName) return fail(canvas, `${remove ? 'remove_many_to_many' : 'add_many_to_many'} needs "tableA" and "tableB".`)
+  const a = findTable(canvas.nodes, aName)
+  const b = findTable(canvas.nodes, bName)
+  if (!a) return fail(canvas, noTable(canvas.nodes, aName))
+  if (!b) return fail(canvas, noTable(canvas.nodes, bName))
+  const same = (l: ManyToMany) => (l.aTableId === a.id && l.bTableId === b.id) || (l.aTableId === b.id && l.bTableId === a.id)
+  const existing = canvas.manyToMany.find(same)
+  if (remove) {
+    if (!existing) return fail(canvas, `There is no many-to-many link between ${a.data.name} and ${b.data.name}.`)
+    return { ok: true, summary: `Removed the many-to-many link ${a.data.name} - ${b.data.name}`, message: `Removed the link between ${a.data.name} and ${b.data.name}.`, canvas: { ...canvas, manyToMany: canvas.manyToMany.filter((l) => l !== existing) } }
+  }
+  if (existing) return fail(canvas, `${a.data.name} and ${b.data.name} are already linked many-to-many.`)
+  const link: ManyToMany = { id: ctx.uid(), aTableId: a.id, bTableId: b.id }
+  return { ok: true, summary: `Linked ${a.data.name} and ${b.data.name} many-to-many`, message: `Linked ${a.data.name} and ${b.data.name} many-to-many (implicit join table).`, canvas: { ...canvas, manyToMany: [...canvas.manyToMany, link] } }
 }
 
 function createDiagram(canvas: Canvas, args: Obj): Outcome {
@@ -514,6 +593,12 @@ export function runTool(canvas: Canvas, name: string, rawArguments: string, ctx:
         return setDatabase(canvas, args)
       case 'auto_layout':
         return autoLayout(canvas)
+      case 'move_tables':
+        return moveTables(canvas, args)
+      case 'add_many_to_many':
+        return manyToManyLink(canvas, args, ctx, false)
+      case 'remove_many_to_many':
+        return manyToManyLink(canvas, args, ctx, true)
       case 'create_diagram':
         return createDiagram(canvas, args)
       default:

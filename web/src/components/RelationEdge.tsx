@@ -6,7 +6,7 @@ import {
   type ConnectionLineComponentProps,
   type EdgeProps,
 } from '@xyflow/react'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Sparkles } from 'lucide-react'
 import { useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Bend } from '../core/model'
 import { curveGeometry, roundedPolyline, routeParts, routePoints, type Dir, type Pt } from '../core/routing'
@@ -115,6 +115,7 @@ export function RelationEdge(props: EdgeProps) {
   const { id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition } = props
   const { selected, data } = props
   const flipRelation = useStore((s) => s.flipRelation)
+  const askAbout = useStore((s) => s.askAbout)
   const setRelationBend = useStore((s) => s.setRelationBend)
   const selectEdge = useStore((s) => s.selectEdge)
   const { screenToFlowPosition } = useReactFlow()
@@ -246,6 +247,24 @@ export function RelationEdge(props: EdgeProps) {
           label={dst === 'many' ? 'n' : '1'}
         />
       </g>
+      {selected && (
+        <EdgeLabelRenderer>
+          <button
+            type="button"
+            data-export-hide
+            title="Ask the AI about this relation"
+            aria-label="Ask the AI about this relation"
+            onClick={(ev) => {
+              ev.stopPropagation()
+              askAbout({ kind: 'relation', id })
+            }}
+            style={{ transform: `translate(-50%, -50%) translate(${midX + (canFlip ? 32 : 0)}px, ${midY}px)` }}
+            className="nodrag nopan pointer-events-auto absolute grid size-6 cursor-pointer place-items-center rounded-full border border-link bg-canvas text-link transition-colors hover:bg-hover"
+          >
+            <Sparkles size={13} />
+          </button>
+        </EdgeLabelRenderer>
+      )}
       {canFlip && (
         <EdgeLabelRenderer>
           <button

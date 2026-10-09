@@ -330,6 +330,49 @@ const PICTURE_STYLE_PROPERTIES = [
 const keepInPicture = (node: Node) =>
   !(node instanceof Element) || !node.matches('[data-export-hide], .react-flow__handle')
 
+/** The html-to-image options that make the picture match the screen: the whole diagram, the theme's background, only the styles that matter. */
+async function pictureOptions(bounds: Rect, canvas: HTMLElement, size: { width: number; height: number; pixelRatio: number }) {
+  const fontEmbedCSS = await embeddedFonts()
+  return {
+    includeStyleProperties: PICTURE_STYLE_PROPERTIES,
+    ...(fontEmbedCSS ? { fontEmbedCSS } : {}),
+    width: size.width,
+    height: size.height,
+    pixelRatio: size.pixelRatio,
+    backgroundColor: getComputedStyle(canvas).backgroundColor, // the theme's canvas colour
+    // The viewport is moved so the tables start PADDING from the top left, at 100%: the picture is the whole diagram.
+    style: {
+      width: `${size.width}px`,
+      height: `${size.height}px`,
+      transform: `translate(${PADDING - bounds.x}px, ${PADDING - bounds.y}px) scale(1)`,
+    },
+    filter: keepInPicture,
+  }
+}
+
+/**
+ * The canvas as one picture for the AI assistant to look at: the whole diagram, drawn so its longest side is at most
+ * `maxSide` pixels (models read images up to about 1500 px well; bigger only costs more), as a JPEG data URL.
+ */
+export async function renderDiagramImage(bounds: Rect, maxSide = 1568): Promise<string> {
+  const viewport = document.querySelector<HTMLElement>('.react-flow__viewport')
+  const canvas = document.querySelector<HTMLElement>('.react-flow')
+  if (!viewport || !canvas) throw new Error('The canvas is not ready yet.')
+  const width = Math.ceil(bounds.width + 2 * PADDING)
+  const height = Math.ceil(bounds.height + 2 * PADDING)
+  const pixelRatio = Math.min(2, maxSide / Math.max(width, height))
+  const { toJpeg } = await import('html-to-image')
+  const options = await pictureOptions(bounds, canvas, { width, height, pixelRatio })
+  const restoreShapes = inlineSvgStyles(viewport)
+  const restoreHints = hideEmptyFieldHints(viewport)
+  try {
+    return await toJpeg(viewport, { ...options, quality: 0.82 })
+  } finally {
+    restoreHints()
+    restoreShapes()
+  }
+}
+
 /**
  * Draws the diagram and saves it. `bounds` is the rectangle the tables span (in canvas coordinates); the caller
  * takes it from React Flow. Rejects with a readable message when it cannot be done.
@@ -344,22 +387,7 @@ export async function exportDiagram(format: ExportFormat, bounds: Rect, title?: 
 
   const { width, height, pixelRatio } = exportSize(bounds)
   const { toPng, toSvg } = await import('html-to-image')
-  const fontEmbedCSS = await embeddedFonts()
-  const options = {
-    includeStyleProperties: PICTURE_STYLE_PROPERTIES,
-    ...(fontEmbedCSS ? { fontEmbedCSS } : {}),
-    width,
-    height,
-    pixelRatio,
-    backgroundColor: getComputedStyle(canvas).backgroundColor, // the theme's canvas colour
-    // The viewport is moved so the tables start PADDING from the top left, at 100%: the picture is the whole diagram.
-    style: {
-      width: `${width}px`,
-      height: `${height}px`,
-      transform: `translate(${PADDING - bounds.x}px, ${PADDING - bounds.y}px) scale(1)`,
-    },
-    filter: keepInPicture,
-  }
+  const options = await pictureOptions(bounds, canvas, { width, height, pixelRatio })
 
   const name = (extension: string) => exportFileName(title, extension)
   // The lines' styles must be on the shapes (see inlineSvgStyles); empty-field hints must not be drawn.

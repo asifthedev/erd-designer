@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { DATABASES, type ChatMessage } from '../../../shared/aiToolSpecs'
+import { DATABASES, REFINE_TOOLS, type ChatMessage } from '../../../shared/aiToolSpecs'
 
 /** Every limit here exists so one request can never cost more than a few cents or tie the server up. */
 export const LIMITS = {
@@ -11,6 +11,11 @@ export const LIMITS = {
   argumentChars: 60_000,
   tables: 300,
   columns: 200,
+  /** A screenshot of the canvas (data URL) and how many ride along with one message. */
+  imageChars: 2_500_000,
+  imagesPerMessage: 2,
+  /** Names in the picked objects. */
+  focusItems: 60,
   /** Model calls in a row after one user message (each tool result starts another). */
   toolRounds: 12,
 } as const
@@ -38,16 +43,30 @@ const canvasSnapshot = z.object({
 
 const toolCall = z.object({ id: short(100).min(1), name: short(60).min(1), arguments: short(LIMITS.argumentChars) })
 
+const image = z.string().max(LIMITS.imageChars).regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/, 'Images must be base64 PNG, JPEG or WebP')
+
 const message = z.discriminatedUnion('role', [
-  z.object({ role: z.literal('user'), content: short(LIMITS.userChars).min(1) }),
+  z.object({ role: z.literal('user'), content: short(LIMITS.userChars).min(1), images: z.array(image).max(LIMITS.imagesPerMessage).optional() }),
   z.object({ role: z.literal('assistant'), content: short(LIMITS.assistantChars), toolCalls: z.array(toolCall).max(LIMITS.toolCallsPerTurn).optional() }),
   z.object({ role: z.literal('tool'), toolCallId: short(100).min(1), name: short(60), content: short(LIMITS.toolResultChars) }),
 ])
+
+const name = short(200)
+const focus = z.object({
+  tables: z.array(name).max(LIMITS.focusItems),
+  columns: z.array(z.object({ table: name, column: name })).max(LIMITS.focusItems),
+  relations: z.array(z.object({ table: name, column: name })).max(LIMITS.focusItems),
+  manyToMany: z.array(z.object({ a: name, b: name })).max(LIMITS.focusItems),
+})
 
 export const chatRequestSchema = z.object({
   /** A model id from GET /api/ai/models. Omitted: the default. */
   model: short(160).optional(),
   canvas: canvasSnapshot,
+  /** What the person has picked on the canvas: their message is about it. */
+  focus: focus.optional(),
+  /** "Refine for production": the tool and database the schema is written for. */
+  refine: z.object({ tool: z.enum(REFINE_TOOLS), database: z.enum(DATABASES) }).optional(),
   messages: z.array(message).min(1).max(LIMITS.messages),
 })
 export type ChatRequest = z.infer<typeof chatRequestSchema>

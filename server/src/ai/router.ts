@@ -56,6 +56,12 @@ export function liveRoute(m: ModelInfo, cfg: { gatewayUrl: string; gatewayKey?: 
   return { adapter: streamOpenAiCompat, baseUrl: cfg.gatewayUrl, apiKey: cfg.gatewayKey }
 }
 
+/** A model that cannot read images gets the same conversation without them (the text part still says what was checked). */
+export function forModel(base: Omit<UpstreamRequest, 'model'>, model: ModelInfo): Omit<UpstreamRequest, 'model'> {
+  if (model.vision || !base.messages.some((m) => m.role === 'user' && m.images?.length)) return base
+  return { ...base, messages: base.messages.map((m) => (m.role === 'user' && m.images ? { role: 'user' as const, content: m.content } : m)) }
+}
+
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 export async function* routeChat(
@@ -81,7 +87,7 @@ export async function* routeChat(
       try {
         const route = deps.routeFor(model)
         const events = route.adapter(
-          { ...base, model: model.upstream },
+          { ...forModel(base, model), model: model.upstream },
           { ...timing, baseUrl: route.baseUrl, apiKey: route.apiKey },
         )
         for await (const ev of events) {

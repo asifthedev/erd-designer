@@ -11,7 +11,12 @@ import { anthropicStream, openAiStream, startFakeGateway, type FakeGateway, type
 
 /** End to end over real HTTP: Express app -> router -> adapter -> fake gateway, with real PostgreSQL for accounts and usage. */
 const hasDb = Boolean(process.env.DATABASE_URL)
-const models = ['test/smart-a', 'test/smart-b', 'test/fast-a', 'test/fast-b'].map((id) => ({ id, name: `Test: ${id}`, supported_parameters: ['tools'] }))
+const models = ['test/smart-a', 'test/smart-b', 'test/fast-a', 'test/fast-b'].map((id) => ({
+  id,
+  name: `Test: ${id}`,
+  supported_parameters: ['tools'],
+  architecture: { input_modalities: id === 'test/smart-a' ? ['text', 'image'] : ['text'] }, // only smart-a can see
+}))
 
 let server: Server
 let base = ''
@@ -123,6 +128,50 @@ describe.skipIf(!hasDb)('AI assistant API (integration)', () => {
     expect(unknown.status).toBe(400)
     expect((await json(unknown)).code).toBe('unknown_model')
     expect(await usageOf(u.id)).toMatchObject({ requests: 1 }) // refusals cost nothing
+  })
+
+  it('tells the model what the person picked on the canvas', async () => {
+    const u = await newUser()
+    const canvasWithOrders = {
+      provider: 'postgresql',
+      maxTables: 25,
+      tables: [
+        { name: 'customer', columns: [{ name: 'id', type: 'UUID', primaryKey: true }] },
+        { name: 'order', columns: [{ name: 'id', type: 'UUID', primaryKey: true }, { name: 'customer_id', type: 'UUID', notNull: true, references: { table: 'customer', column: 'id' } }, { name: 'shipping_address', type: 'TEXT' }] },
+      ],
+    }
+    const focus = { tables: ['order'], columns: [{ table: 'order', column: 'shipping_address' }], relations: [{ table: 'order', column: 'customer_id' }], manyToMany: [] }
+    await (await chat(u.cookie, { canvas: canvasWithOrders, focus, messages: [{ role: 'user', content: 'why is this here?' }] })).text()
+    const system = gateway.calls[0].body.messages[0].content as string
+    expect(system).toContain('The person has picked these on the canvas')
+    expect(system).toContain('table order: 3 columns')
+    expect(system).toContain('column order.shipping_address: TEXT')
+    expect(system).toContain('relation order.customer_id -> customer.id: many-to-one')
+    await (await chat(u.cookie, { canvas: canvasWithOrders, messages: [{ role: 'user', content: 'hello' }] })).text()
+    expect(gateway.calls[1].body.messages[0].content).not.toContain('The person has picked these on the canvas')
+  })
+
+  it('refine: the model gets the production checklist for the chosen tool and database', async () => {
+    const u = await newUser()
+    await (await chat(u.cookie, ask({ refine: { tool: 'drizzle', database: 'mysql' } }))).text()
+    const system = gateway.calls[0].body.messages[0].content as string
+    expect(system).toContain('Production refinement')
+    expect(system).toContain('Drizzle ORM (TypeScript schema) on MySQL')
+    expect(system).toContain('CHAR(36)')
+    expect((await chat(u.cookie, ask({ refine: { tool: 'oracle-forms', database: 'mysql' } }))).status).toBe(400)
+  })
+
+  it('screenshots reach a model that can see and are dropped for one that cannot', async () => {
+    const u = await newUser('monthly')
+    const PNG = 'data:image/png;base64,iVBORw0KGgo='
+    const withImage = { canvas, messages: [{ role: 'user', content: 'Which tables overlap?', images: [PNG] }] }
+    await (await chat(u.cookie, { ...withImage, model: 'test/smart-a' })).text()
+    const sighted = gateway.calls[0].body.messages.at(-1).content
+    expect(sighted).toEqual([{ type: 'text', text: 'Which tables overlap?' }, { type: 'image_url', image_url: { url: PNG } }])
+    await (await chat(u.cookie, { ...withImage, model: 'test/smart-b' })).text()
+    expect(gateway.calls[1].body.messages.at(-1).content).toBe('Which tables overlap?')
+    const models = await (await fetch(`${base}/api/ai/models`, { headers: { Cookie: u.cookie } })).json() as any
+    expect(Object.fromEntries(models.models.map((m: any) => [m.id, m.vision]))).toMatchObject({ 'test/smart-a': true, 'test/smart-b': false })
   })
 
   it('refuses bad input without calling the model', async () => {

@@ -86,6 +86,7 @@ function Canvas() {
   const removeReference = useStore((s) => s.removeReference);
   const deleteTable = useStore((s) => s.deleteTable);
   const deleteColumn = useStore((s) => s.deleteColumn);
+  const askAbout = useStore((s) => s.askAbout);
   const selectedColumn = useStore((s) => s.selectedColumn);
   const setSelectedColumn = useStore((s) => s.setSelectedColumn);
   const copyTables = useStore((s) => s.copyTables);
@@ -239,9 +240,14 @@ function Canvas() {
               ...at,
               items: [
                 {
+                  label: "Ask AI about this column",
+                  onSelect: () => askAbout({ kind: "column", tableId: node.id, columnId }),
+                },
+                {
                   label: "Delete column",
                   shortcut: DELETE_HINT,
                   danger: true,
+                  separator: true,
                   onSelect: () => {
                     deleteColumn(node.id, columnId);
                     setSelectedColumn(null);
@@ -269,7 +275,18 @@ function Canvas() {
             ...at,
             items: [
               {
+                label:
+                  ids.length > 1
+                    ? `Ask AI about these ${ids.length} tables`
+                    : "Ask AI about this table",
+                onSelect: () =>
+                  ids.length > 1
+                    ? useStore.setState({ aiOpen: true, codeOpen: false })
+                    : askAbout({ kind: "table", id: node.id }),
+              },
+              {
                 label: "Copy",
+                separator: true,
                 shortcut: "Ctrl C",
                 onSelect: () => copyTables(ids),
               },
@@ -305,7 +322,12 @@ function Canvas() {
             y: e.clientY,
             items: [
               {
+                label: "Ask AI about this relation",
+                onSelect: () => askAbout({ kind: "relation", id: edge.id }),
+              },
+              {
                 label: "Delete relation",
+                separator: true,
                 shortcut: DELETE_HINT,
                 danger: true,
                 onSelect: () => deleteEdge(edge.id),

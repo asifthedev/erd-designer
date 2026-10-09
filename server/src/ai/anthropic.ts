@@ -8,7 +8,13 @@ import type { Adapter, ChatMessage, FinishReason, UpstreamRequest } from './type
 export function toAnthropicMessages(messages: ChatMessage[]) {
   const out: { role: 'user' | 'assistant'; content: unknown[] }[] = []
   for (const m of messages) {
-    if (m.role === 'user') out.push({ role: 'user', content: [{ type: 'text', text: m.content }] })
+    if (m.role === 'user') {
+      const images = (m.images ?? []).flatMap((url) => {
+        const hit = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(url)
+        return hit ? [{ type: 'image', source: { type: 'base64', media_type: hit[1], data: hit[2] } }] : []
+      })
+      out.push({ role: 'user', content: [...images, { type: 'text', text: m.content }] })
+    }
     else if (m.role === 'assistant') {
       const content: unknown[] = []
       if (m.content) content.push({ type: 'text', text: m.content })
