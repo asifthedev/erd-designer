@@ -21,6 +21,7 @@ export const TOOL_NAMES = [
   'remove_relation',
   'set_database',
   'auto_layout',
+  'use_unpredictable_ids',
   'move_tables',
   'add_many_to_many',
   'remove_many_to_many',
@@ -51,11 +52,11 @@ const reference = {
 
 const columnProps = {
   name: str('Column name, e.g. "created_at" or "createdAt". Follow the naming style already used on the canvas.'),
-  type: str('SQL type, e.g. SERIAL, INT, BIGINT, VARCHAR(255), TEXT, BOOLEAN, DECIMAL(10,2), TIMESTAMP, DATE, UUID, JSONB.'),
+  type: str('SQL type, e.g. UUID, CHAR(36), VARCHAR(255), TEXT, INT, BOOLEAN, DECIMAL(12,2), TIMESTAMP, TIMESTAMPTZ, DATE, JSONB. Primary keys are UUIDs (never SERIAL).'),
   primaryKey: bool('Part of the primary key.'),
   notNull: bool('NOT NULL.'),
   unique: bool('UNIQUE.'),
-  default: str('Raw SQL default expression, e.g. now(), 0, false, \'draft\'.'),
+  default: str('Raw SQL default expression, e.g. now(), 0, false, \'draft\'. For a UUID key: gen_random_uuid() (every database writes it its own way).'),
 }
 
 const columnSpec = {
@@ -70,8 +71,8 @@ export const TOOL_SPECS: ToolSpec[] = [
     name: 'create_tables',
     description:
       'Create one or more tables with all their columns and foreign keys in ONE call (preferred over many calls). ' +
-      'Foreign keys may point at tables created in the same call. Every table needs a primary key. ' +
-      'A foreign key column must have the same type as the column it references (use INT for a SERIAL key, BIGINT for BIGSERIAL).',
+      'Foreign keys may point at tables created in the same call. Every table needs a primary key: by default a UUID (type UUID on PostgreSQL, CHAR(36) on MySQL, TEXT on SQLite, default gen_random_uuid()), never SERIAL or an auto-increment integer. ' +
+      'A foreign key column must have the same type as the column it references (UUID for a UUID key).',
     parameters: {
       type: 'object',
       properties: {
@@ -183,6 +184,14 @@ export const TOOL_SPECS: ToolSpec[] = [
     description:
       'Re-arrange every table on the canvas so related tables sit next to each other and relation lines do not cross tables. ' +
       'New tables are already placed automatically; call this after large restructurings or when the canvas looks messy.',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'use_unpredictable_ids',
+    description:
+      'Replace EVERY sequential primary key (INT, BIGINT, SERIAL, BIGSERIAL, auto-increment...) with a random, unguessable UUID key ' +
+      'suited to the database (PostgreSQL UUID, MySQL CHAR(36), SQLite TEXT), and change every foreign key that points at them to match. ' +
+      'Run it whenever the schema still has integer ids. Idempotent: safe to call again.',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   },
   {

@@ -4,14 +4,12 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { RefineTool } from '../../../shared/aiToolSpecs'
 import { setCanvasCapture, useAi, type CheckChip, type UiMessage } from '../ai/agent'
 import { pickedItems, suggestionsFor, type FocusItem } from '../ai/focus'
+import { DB_LABEL, REFINE_TOOLS } from '../ai/refine'
 import { captureCanvas } from '../ai/screenshot'
 import { useAuth } from '../auth/store'
-import { generateDrizzle } from '../core/drizzle'
 import { PROVIDERS, type Provider } from '../core/model'
-import { generatePrisma } from '../core/prisma'
-import { generateSql } from '../core/sql'
 import { navigate } from '../lib/route'
-import { toDiagram, useStore } from '../store'
+import { useStore } from '../store'
 import { DbIcon } from './DbIcon'
 import { RichText } from './RichText'
 import { Select } from './Select'
@@ -31,15 +29,6 @@ const STARTERS_FILLED = [
   'Add created_at and updated_at timestamps to every table that lacks them',
   'Arrange the tables so the relation lines are easy to follow',
 ]
-
-const REFINE_TOOLS: { id: RefineTool; label: string; file: string; fence: string }[] = [
-  { id: 'prisma', label: 'Prisma', file: 'schema.prisma', fence: 'prisma' },
-  { id: 'drizzle', label: 'Drizzle', file: 'schema.ts', fence: 'ts' },
-  { id: 'sql', label: 'SQL', file: 'schema.sql', fence: 'sql' },
-]
-const DB_LABEL: Record<Provider, string> = { postgresql: 'PostgreSQL', mysql: 'MySQL', sqlite: 'SQLite' }
-/** A schema longer than this is cut: the model reads the canvas itself, the code is there to show the tool's own shape. */
-const MAX_CODE_CHARS = 30_000
 
 /** The assistant's chat: lives in the side panel, next to the canvas it reads and edits. */
 export function AiPanel() {
@@ -214,7 +203,7 @@ export function AiPanel() {
               onStart={(tool, database) => {
                 setRefineOpen(false)
                 stick.current = true
-                void ai.send(refineMessage(tool, database), { refine: { tool, database }, display: `Refine for production · ${REFINE_TOOLS.find((t) => t.id === tool)!.label} · ${DB_LABEL[database]}` })
+                void ai.refine(tool, database)
               }}
             />
           )}
@@ -301,20 +290,6 @@ export function AiPanel() {
   )
 }
 
-/** The message that carries the schema as the chosen tool generates it, so the assistant refines what the person would really ship. */
-function refineMessage(tool: RefineTool, database: Provider): string {
-  const s = useStore.getState()
-  const diagram = toDiagram(s.provider, s.nodes, s.manyToMany)
-  const generated = tool === 'sql' ? generateSql(diagram).sql : tool === 'drizzle' ? generateDrizzle(diagram).schema : generatePrisma(diagram).schema
-  const info = REFINE_TOOLS.find((t) => t.id === tool)!
-  const code = generated.length > MAX_CODE_CHARS ? `${generated.slice(0, MAX_CODE_CHARS)}\n... (cut: ${generated.length - MAX_CODE_CHARS} more characters; the canvas has everything)` : generated
-  return (
-    `Refine my schema for production.\nTarget tool: ${info.label}\nTarget database: ${DB_LABEL[database]}` +
-    `${database !== s.provider ? ` (the canvas is currently set to ${DB_LABEL[s.provider]}; switch it)` : ''}\n\n` +
-    `This is the schema as ${info.label} generates it today (${info.file}):\n\`\`\`${info.fence}\n${code}\n\`\`\``
-  )
-}
-
 function RefineCard({ onClose, onStart }: { onClose: () => void; onStart: (tool: RefineTool, database: Provider) => void }) {
   const provider = useStore((s) => s.provider)
   const format = useStore((s) => s.codeFormat)
@@ -330,7 +305,7 @@ function RefineCard({ onClose, onStart }: { onClose: () => void; onStart: (tool:
         </button>
       </div>
       <p className="mb-2 text-muted">
-        The assistant rewrites your schema the way it should be in production: hard-to-guess ids instead of 1, 2, 3…, the right types, timestamps, constraints, safe delete rules and history snapshots. Tell it what you ship with:
+        Rewrites your schema the way it should be in production. Ids become random UUIDs instead of 1, 2, 3… (done by the app itself, always); the assistant then fixes types, timestamps, constraints, delete rules and history snapshots. You get the finished code. What do you ship with?
       </p>
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <div role="radiogroup" aria-label="Tool" className="flex overflow-hidden rounded-md border border-line">
@@ -480,6 +455,7 @@ function Message({ m }: { m: UiMessage }) {
       )}
       {m.text ? <RichText text={m.text} /> : m.streaming && !(m.checks && m.checks.length) ? <Thinking /> : null}
       {m.streaming && m.text ? <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-key align-middle" aria-hidden /> : null}
+      {m.refinedCode && <RefinedCode code={m.refinedCode} />}
       {m.checks && m.checks.length > 0 && (
         <ul className="mt-2 space-y-1.5">
           {m.checks.map((c) => (
@@ -500,5 +476,50 @@ function Thinking() {
       <span className="size-1.5 animate-bounce rounded-full bg-key [animation-delay:-0.15s]" />
       <span className="size-1.5 animate-bounce rounded-full bg-key" />
     </span>
+  )
+}
+
+/** The finished schema of a refine, as the chosen tool's code, ready to take away. */
+function RefinedCode({ code }: { code: NonNullable<UiMessage['refinedCode']> }) {
+  const [copied, setCopied] = useState(false)
+  const open = () => {
+    useStore.setState({ codeFormat: code.tool })
+    useStore.getState().toggleCode()
+  }
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([code.code], { type: 'text/plain' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = code.file
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code.code)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+  const btn = 'cursor-pointer rounded-sm border border-line px-2 py-0.5 text-[12px] text-muted hover:border-key hover:text-key'
+  return (
+    <div className="mt-3 overflow-hidden rounded-md border border-line bg-canvas" aria-label="The refined schema">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-2.5 py-1.5">
+        <Wand2 size={13} className="text-key" aria-hidden />
+        <span className="mr-auto text-[12.5px] font-semibold">{code.file} · refined</span>
+        <button type="button" className={btn} onClick={copy}>
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+        <button type="button" className={btn} onClick={download}>
+          Download
+        </button>
+        <button type="button" className={btn} onClick={open}>
+          Open in code panel
+        </button>
+      </div>
+      <pre className="max-h-72 overflow-auto px-3 py-2 font-mono text-[12px] leading-snug">{code.code}</pre>
+    </div>
   )
 }

@@ -139,15 +139,18 @@ function nativeType(p: ParsedType, provider: Provider): SqlType {
 }
 
 /** Translate a default expression typed in SQL style into one the target database accepts. */
-function sqlDefault(raw: string, provider: Provider, where: string, warnings: string[]): string | undefined {
+/** A random version 4 UUID as text, made by SQLite itself. */
+export const SQLITE_UUID =
+  "(lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)), 2) || '-' || substr('89ab', 1 + (abs(random()) % 4), 1) || substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6))))"
+
+function sqlDefault(raw: string, provider: Provider): string | undefined {
   const v = raw.trim()
   if (!v || /^null$/i.test(v)) return undefined
   if (/^(now\(\)|current_timestamp(\(\d*\))?|localtimestamp(\(\d*\))?)$/i.test(v)) return 'CURRENT_TIMESTAMP'
   if (/^(uuid\(\)|gen_random_uuid\(\)|uuid_generate_v4\(\))$/i.test(v)) {
     if (provider === 'postgresql') return 'gen_random_uuid()'
     if (provider === 'mysql') return '(UUID())'
-    warnings.push(`${where}: SQLite has no built-in UUID function, default left out`)
-    return undefined
+    return SQLITE_UUID // SQLite has no UUID function: this is the usual way to make a version 4 UUID in plain SQL
   }
   if (/^(true|false)$/i.test(v)) {
     const on = v.toLowerCase() === 'true'
@@ -273,7 +276,7 @@ export function generateSql(diagram: Diagram): SqlResult {
         if (col.notNull || col.primaryKey || type.autoIncrement) rest.push('NOT NULL')
         if (type.autoIncrement && provider === 'mysql') rest.push('AUTO_INCREMENT')
         if (!type.autoIncrement) {
-          const def = sqlDefault(col.default, provider, where(col), warnings)
+          const def = sqlDefault(col.default, provider)
           if (def !== undefined) rest.push(`DEFAULT ${def}`)
         }
         if (col.unique && !(col.primaryKey && pk.length === 1)) rest.push('UNIQUE')

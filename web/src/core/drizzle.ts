@@ -283,8 +283,6 @@ function defaultModifier(
   built: Built,
   provider: Provider,
   imp: Imports,
-  where: string,
-  warnings: string[],
 ): string | undefined {
   const raw = col.default.trim()
   if (!raw || /^null$/i.test(raw) || built.autoIncrement) return undefined
@@ -307,8 +305,7 @@ function defaultModifier(
   if (/^(uuid\(\)|gen_random_uuid\(\)|uuid_generate_v4\(\))$/i.test(raw)) {
     if (provider === 'postgresql') return built.kind === 'uuid' ? '.defaultRandom()' : viaSql('gen_random_uuid()')
     if (provider === 'mysql') return viaSql('UUID()')
-    warnings.push(`${where}: SQLite has no built-in UUID function, default left out`)
-    return undefined
+    return '.$defaultFn(() => crypto.randomUUID())' // SQLite has no UUID function: Drizzle makes the id in the app
   }
   // Arrays, JSON and temporal values are typed (string[], objects, Date), so literals go through sql``.
   if (built.array || built.kind === 'json' || built.kind === 'temporal' || built.kind === 'datetime') {
@@ -398,7 +395,7 @@ export function generateDrizzle(diagram: Diagram): DrizzleResult {
       }
       if (col.unique && !(col.primaryKey && pk.length === 1)) expr += '.unique()'
 
-      const def = defaultModifier(col, built, provider, imp, where, warnings)
+      const def = defaultModifier(col, built, provider, imp)
       if (def) expr += def
 
       const ref = col.references

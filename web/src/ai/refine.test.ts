@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { generateDrizzle } from '../core/drizzle'
-import { checkRelations, isInvalid } from '../core/relations'
 import { generatePrisma } from '../core/prisma'
+import { checkRelations, isInvalid } from '../core/relations'
 import { generateSql } from '../core/sql'
 import type { Provider } from '../core/model'
-import { runTool, type Canvas } from './executor'
+import { isSequentialType, runTool, unpredictableIds, UNPREDICTABLE_ID, type Canvas } from './executor'
 
 /**
- * What "Refine for production" asks the model to do (UUID keys, exact money, timezone-aware timestamps, deliberate
- * delete rules), done the way a model would do it with the tools. Whatever it does must end in a schema that the three
- * generators (Prisma, Drizzle, SQL) can write for every database, with no warning and no broken relation.
+ * "Refine for production" must never leave an id that counts 1, 2, 3. The app does that part itself (not the model), so
+ * it is tested the strict way: every database, every tool, the code that comes out.
  */
 
 let n = 0
@@ -20,86 +19,126 @@ const run = (c: Canvas, name: string, args: object) => {
   return out.canvas
 }
 
-const ID: Record<Provider, { type: string; default: string }> = {
-  postgresql: { type: 'UUID', default: 'gen_random_uuid()' },
-  mysql: { type: 'CHAR(36)', default: '(UUID())' },
-  sqlite: { type: 'TEXT', default: '(lower(hex(randomblob(16))))' },
-}
-
-function shop(provider: Provider): Canvas {
+function shop(provider: Provider, idType = 'SERIAL'): Canvas {
   let c: Canvas = { provider, nodes: [], manyToMany: [] }
-  c = run(c, 'create_tables', {
+  const fk = idType === 'SERIAL' ? 'INT' : idType === 'BIGSERIAL' ? 'BIGINT' : idType
+  return run(c, 'create_tables', {
     tables: [
-      { name: 'customer', columns: [{ name: 'id', type: 'SERIAL', primaryKey: true }, { name: 'email', type: 'VARCHAR(255)', notNull: true, unique: true }, { name: 'created_at', type: 'TIMESTAMP', notNull: true, default: 'now()' }] },
-      { name: 'product', columns: [{ name: 'id', type: 'SERIAL', primaryKey: true }, { name: 'name', type: 'VARCHAR(200)', notNull: true }, { name: 'price', type: 'DECIMAL(10,2)', notNull: true }] },
-      { name: 'order', columns: [{ name: 'id', type: 'SERIAL', primaryKey: true }, { name: 'customer_id', type: 'INT', notNull: true, references: { table: 'customer' } }, { name: 'shipping_address', type: 'TEXT', notNull: true }] },
-      { name: 'order_item', columns: [{ name: 'order_id', type: 'INT', primaryKey: true, references: { table: 'order', onDelete: 'CASCADE' } }, { name: 'product_id', type: 'INT', primaryKey: true, references: { table: 'product' } }, { name: 'quantity', type: 'INT', notNull: true, default: '1' }] },
+      { name: 'customer', columns: [{ name: 'id', type: idType, primaryKey: true }, { name: 'email', type: 'VARCHAR(255)', notNull: true, unique: true }] },
+      { name: 'product', columns: [{ name: 'id', type: idType, primaryKey: true }, { name: 'name', type: 'VARCHAR(200)', notNull: true }, { name: 'price', type: 'DECIMAL(10,2)', notNull: true }] },
+      { name: 'category', columns: [{ name: 'id', type: idType, primaryKey: true }, { name: 'parent_id', type: fk, references: { table: 'category' } }] },
+      { name: 'order', columns: [{ name: 'id', type: idType, primaryKey: true }, { name: 'customer_id', type: fk, notNull: true, references: { table: 'customer' } }] },
+      { name: 'order_item', columns: [{ name: 'order_id', type: fk, primaryKey: true, references: { table: 'order', onDelete: 'CASCADE' } }, { name: 'product_id', type: fk, primaryKey: true, references: { table: 'product' } }, { name: 'quantity', type: 'INT', notNull: true, default: '1' }] },
     ],
   })
-  return c
-}
-
-/** The refinement a good model makes: non-sequential keys everywhere, then the rest of the checklist. */
-function refine(c: Canvas): Canvas {
-  const { type, default: def } = ID[c.provider]
-  const stamp = c.provider === 'postgresql' ? 'TIMESTAMPTZ' : 'TIMESTAMP'
-  for (const table of ['customer', 'product', 'order']) c = run(c, 'alter_table', { table, updateColumns: [{ name: 'id', type, default: def }] })
-  c = run(c, 'alter_table', { table: 'customer', updateColumns: [{ name: 'created_at', type: stamp }], addColumns: [{ name: 'updated_at', type: stamp, notNull: true, default: 'now()' }] })
-  c = run(c, 'alter_table', { table: 'product', updateColumns: [{ name: 'price', type: 'DECIMAL(12,2)' }], addColumns: [{ name: 'created_at', type: stamp, notNull: true, default: 'now()' }] })
-  c = run(c, 'alter_table', { table: 'order', addColumns: [{ name: 'created_at', type: stamp, notNull: true, default: 'now()' }, { name: 'total', type: 'DECIMAL(12,2)', notNull: true }] })
-  c = run(c, 'set_relation', { table: 'order', column: 'customer_id', references: { table: 'customer', onDelete: 'RESTRICT' } })
-  c = run(c, 'alter_table', { table: 'order_item', addColumns: [{ name: 'unit_price', type: 'DECIMAL(12,2)', notNull: true }] }) // a snapshot of the price at purchase time
-  return c
 }
 
 const tables = (c: Canvas) => c.nodes.map((x) => x.data)
 const col = (c: Canvas, t: string, name: string) => tables(c).find((x) => x.name === t)!.columns.find((x) => x.name === name)!
 
-describe.each(['postgresql', 'mysql', 'sqlite'] as const)('a refined shop on %s', (provider) => {
+describe('what counts as a sequential id', () => {
+  it('knows every integer spelling', () => {
+    for (const t of ['INT', 'int', 'INTEGER', 'BIGINT', 'SMALLINT', 'TINYINT', 'MEDIUMINT', 'SERIAL', 'BIGSERIAL', 'SMALLSERIAL', 'INT4', 'INT8', 'INT(11)', 'INT UNSIGNED', 'bigint unsigned', ' serial ']) expect(isSequentialType(t), t).toBe(true)
+    for (const t of ['UUID', 'CHAR(36)', 'TEXT', 'VARCHAR(255)', 'DECIMAL(10,2)', 'TIMESTAMP', 'BOOLEAN', 'FLOAT', 'JSONB']) expect(isSequentialType(t), t).toBe(false)
+  })
+})
+
+describe.each(['postgresql', 'mysql', 'sqlite'] as const)('making every id unguessable on %s', (provider) => {
+  const target = UNPREDICTABLE_ID[provider]
   const before = shop(provider)
-  const after = refine(before)
+  const { canvas: after, changed } = unpredictableIds(before)
   const diagram = { provider, tables: tables(after), manyToMany: [] }
 
-  it('has no guessable ids, and every foreign key follows its key', () => {
-    for (const t of ['customer', 'product', 'order']) expect(col(after, t, 'id')).toMatchObject({ type: ID[provider].type, default: ID[provider].default, primaryKey: true })
-    expect(col(after, 'order', 'customer_id').type).toBe(ID[provider].type)
-    expect(col(after, 'order_item', 'order_id').type).toBe(ID[provider].type)
-    expect(col(after, 'order_item', 'product_id').type).toBe(ID[provider].type)
-    for (const t of tables(after)) for (const c of t.columns) expect(/serial/i.test(c.type), `${t.name}.${c.name}`).toBe(false)
+  it('changes every single-column integer key, and nothing else', () => {
+    expect(changed.sort()).toEqual(['category', 'customer', 'order', 'product'])
+    for (const t of ['customer', 'product', 'category', 'order']) expect(col(after, t, 'id')).toMatchObject({ type: target.type, default: target.default, primaryKey: true, notNull: true })
+    expect(col(after, 'product', 'price').type).toBe('DECIMAL(10,2)')
+    expect(col(after, 'order_item', 'quantity').type).toBe('INT') // a count is not an id
   })
 
-  it('keeps every relation valid', () => {
+  it('moves every foreign key with it, including a table pointing at itself and a junction table', () => {
+    for (const [t, c] of [['category', 'parent_id'], ['order', 'customer_id'], ['order_item', 'order_id'], ['order_item', 'product_id']] as const) {
+      expect(col(after, t, c).type, `${t}.${c}`).toBe(target.type)
+      expect(col(after, t, c).default, `${t}.${c} is not generated`).toBe('')
+    }
     expect(checkRelations(diagram).filter(isInvalid)).toEqual([])
-    expect(col(after, 'order', 'customer_id').references).toMatchObject({ onDelete: 'RESTRICT' })
-    expect(col(after, 'order_item', 'order_id').references).toMatchObject({ onDelete: 'CASCADE' })
   })
 
-  it('is written by Prisma, Drizzle and SQL without a single warning', () => {
+  it('is safe to run again, and leaves a table that already has a UUID or text key alone', () => {
+    expect(unpredictableIds(after)).toEqual({ canvas: after, changed: [] })
+    const mixed = run(before, 'alter_table', { table: 'customer', updateColumns: [{ name: 'id', type: 'VARCHAR(26)' }] })
+    expect(unpredictableIds(mixed).changed).not.toContain('customer')
+    expect(col(unpredictableIds(mixed).canvas, 'order', 'customer_id').type).toBe('VARCHAR(26)')
+  })
+
+  it('leaves no integer id in the code of any tool, and no warning', () => {
     const prisma = generatePrisma(diagram)
     const drizzle = generateDrizzle(diagram)
     const sql = generateSql(diagram)
-    expect(prisma.warnings).toEqual([])
-    expect(drizzle.warnings).toEqual([])
-    expect(sql.warnings).toEqual([])
-    expect(prisma.schema).toMatch(/model Customer \{/)
-    expect(prisma.schema).toMatch(/Decimal/)
-    expect(sql.sql).toMatch(/CREATE TABLE/i)
+    expect([...prisma.warnings, ...drizzle.warnings, ...sql.warnings]).toEqual([])
+    // Prisma: every model's key is a String made by uuid(); no Int @id, no autoincrement.
+    expect(prisma.schema).not.toMatch(/autoincrement|Int\s+@id|BigInt\s+@id/)
+    expect(prisma.schema.match(/String\s+@id @default\(uuid\(\)\)/g)).toHaveLength(4)
+    // Drizzle: no serial / integer primary key.
+    expect(drizzle.schema).not.toMatch(/serial\(|integer\([^)]*\)\.primaryKey|bigint\([^)]*\)\.primaryKey|autoIncrement/i)
+    // SQL: no SERIAL / AUTO_INCREMENT / AUTOINCREMENT / identity.
+    expect(sql.sql).not.toMatch(/SERIAL|AUTO_?INCREMENT|IDENTITY/i)
   })
 
-  it('the id default comes out in the shape each tool expects', () => {
+  it('writes the key the way each tool recommends', () => {
     const prisma = generatePrisma(diagram).schema
+    const drizzle = generateDrizzle(diagram).schema
     const sql = generateSql(diagram).sql
     if (provider === 'postgresql') {
-      expect(prisma).toMatch(/@default\(uuid\(\)\)/)
-      expect(sql).toMatch(/gen_random_uuid\(\)/)
-      expect(generateDrizzle(diagram).schema).toMatch(/uuid\(/)
+      expect(prisma).toContain('@default(uuid()) @db.Uuid')
+      expect(drizzle).toContain("uuid('id').primaryKey().defaultRandom()")
+      expect(sql).toMatch(/"id"\s+UUID\s+NOT NULL DEFAULT gen_random_uuid\(\)/)
+    } else if (provider === 'mysql') {
+      expect(prisma).toContain('@default(uuid()) @db.Char(36)')
+      expect(drizzle).toMatch(/char\('id', \{ length: 36 \}\)\.primaryKey\(\)\.default\(sql`\(UUID\(\)\)`\)/)
+      expect(sql).toMatch(/`id`\s+CHAR\(36\)/)
+      expect(sql).toContain('DEFAULT (UUID())')
+      expect(sql).not.toContain('((UUID()))')
     } else {
-      expect(prisma).toMatch(/@id/)
-      expect(sql).not.toMatch(/SERIAL|AUTO_INCREMENT|AUTOINCREMENT/i)
+      expect(prisma).toMatch(/String\s+@id @default\(uuid\(\)\)/)
+      expect(drizzle).toContain("text('id').primaryKey().$defaultFn(() => crypto.randomUUID())")
+      expect(sql).toContain('"id"')
+      expect(sql).toMatch(/DEFAULT \(lower\(hex\(randomblob\(4\)\)/)
     }
   })
+})
 
-  it('keeps the history: the price a customer paid is stored on the order line', () => {
-    expect(col(after, 'order_item', 'unit_price')).toMatchObject({ type: 'DECIMAL(12,2)', notNull: true })
+describe('the use_unpredictable_ids tool', () => {
+  it('does it in one call, says what changed, and is a no-op when there is nothing to change', () => {
+    const out = runTool(shop('postgresql'), 'use_unpredictable_ids', '{}', ctx)
+    expect(out.ok).toBe(true)
+    expect(out.message).toMatch(/customer, product, category, order|category|customer/)
+    expect(out.summary).toBe('Ids are now UUID in 4 tables')
+    expect(col(out.canvas, 'order', 'customer_id').type).toBe('UUID')
+    const again = runTool(out.canvas, 'use_unpredictable_ids', '{}', ctx)
+    expect(again.ok).toBe(true)
+    expect(again.canvas).toBe(out.canvas)
+    expect(again.summary).toBe('Ids are already unguessable')
+  })
+  it('also works for a MySQL BIGINT UNSIGNED key', () => {
+    const c = shop('mysql', 'BIGINT UNSIGNED')
+    const out = runTool(c, 'use_unpredictable_ids', '{}', ctx)
+    expect(col(out.canvas, 'customer', 'id').type).toBe('CHAR(36)')
+    expect(col(out.canvas, 'order', 'customer_id').type).toBe('CHAR(36)')
+  })
+})
+
+describe('the rest of a refine, done the way a model does it with the tools', () => {
+  it('keeps the schema valid and writable in every tool', () => {
+    for (const provider of ['postgresql', 'mysql', 'sqlite'] as const) {
+      let c = unpredictableIds(shop(provider)).canvas
+      const stamp = provider === 'postgresql' ? 'TIMESTAMPTZ' : 'TIMESTAMP'
+      c = run(c, 'alter_table', { table: 'product', updateColumns: [{ name: 'price', type: 'DECIMAL(12,2)' }], addColumns: [{ name: 'created_at', type: stamp, notNull: true, default: 'now()' }] })
+      c = run(c, 'set_relation', { table: 'order', column: 'customer_id', references: { table: 'customer', onDelete: 'RESTRICT' } })
+      c = run(c, 'alter_table', { table: 'order_item', addColumns: [{ name: 'unit_price', type: 'DECIMAL(12,2)', notNull: true }] })
+      const diagram = { provider, tables: tables(c), manyToMany: [] }
+      expect(checkRelations(diagram).filter(isInvalid)).toEqual([])
+      expect([...generatePrisma(diagram).warnings, ...generateDrizzle(diagram).warnings, ...generateSql(diagram).warnings]).toEqual([])
+    }
   })
 })

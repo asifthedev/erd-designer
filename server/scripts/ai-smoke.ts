@@ -14,7 +14,7 @@ import 'dotenv/config'
 import { parseArgs } from 'node:util'
 import type { ChatMessage, FocusSnapshot, RefineRequest } from '../../shared/aiToolSpecs'
 import { TOOL_SPECS } from '../../shared/aiToolSpecs'
-import { runTool, type Canvas } from '../../web/src/ai/executor'
+import { runTool, unpredictableIds, type Canvas } from '../../web/src/ai/executor'
 import { layoutReport } from '../../web/src/ai/layoutReport'
 import { canvasSnapshot } from '../../web/src/ai/snapshot'
 import { streamAnthropic } from '../src/ai/anthropic'
@@ -183,21 +183,24 @@ const scenarios: Scenario[] = [
     id: 'refine',
     title: 'Refines a schema for production (Prisma, PostgreSQL)',
     run: async () => {
-      const canvas = await shopCanvas()
+      // As in the app: the ids are made unguessable by the app first, then the model refines the rest.
+      const canvas = unpredictableIds(await shopCanvas()).canvas
       const result = await converse(
         canvas,
-        'Refine my schema for production.\nTarget tool: Prisma\nTarget database: PostgreSQL\n\n(The schema is the one on the canvas.)',
+        'Refine my schema for production.\nTarget tool: Prisma\nTarget database: PostgreSQL\nThe app has already replaced the sequential integer ids with random UUIDs. Keep every id non-sequential.\n\n(The schema is the one on the canvas.)',
         { refine: { tool: 'prisma', database: 'postgresql' } },
         10,
       )
-      const cols = result.canvas.nodes.flatMap((n) => n.data.columns)
-      const pks = cols.filter((c) => c.primaryKey && c.references === undefined)
+      const idsLeftAlone = !result.canvas.nodes.some((n) => n.data.columns.some((c) => c.primaryKey && !c.references && /serial|^int|integer|bigint/i.test(c.type.trim())))
+      // ...and then the app has the last word, so a table the model added with an integer key is fixed too.
+      const final = unpredictableIds(result.canvas)
+      const cols = final.canvas.nodes.flatMap((n) => n.data.columns)
       const money = cols.filter((c) => /price|total|amount|subtotal/i.test(c.name))
       return {
-        result,
+        result: { ...result, canvas: final.canvas },
         checks: [
-          ['no sequential (SERIAL / integer) primary keys left', pks.length > 0 && pks.every((c) => !/serial|^int|integer|bigint/i.test(c.type.trim()))],
-          ['foreign keys follow the new key type', result.canvas.nodes.flatMap((n) => n.data.columns).filter((c) => c.references).every((c) => !/serial/i.test(c.type))],
+          ['the model did not bring integer ids back', idsLeftAlone],
+          ['no sequential primary key in the end', !cols.some((c) => c.primaryKey && !c.references && /serial|^int|integer|bigint/i.test(c.type.trim()))],
           ['money is DECIMAL, never FLOAT', money.every((c) => /decimal|numeric/i.test(c.type))],
           ['timestamps are added', cols.some((c) => /created_at/i.test(c.name))],
           ['no tool call failed', failedCalls(result) <= 1],

@@ -418,7 +418,8 @@ describe('generateSql', () => {
     expect(sql).toContain("CHECK (\"role\" IN ('a', 'b'))")
     expect(sql).toContain('CONSTRAINT "fk_posts_author_id" FOREIGN KEY')
     expect(sql).not.toContain('ALTER TABLE')
-    expect(warnings.some((w) => w.includes('UUID'))).toBe(true)
+    expect(warnings.some((w) => w.includes('UUID'))).toBe(false) // SQLite gets a real default for a UUID column
+    expect(sql).toMatch(/DEFAULT \(lower\(hex\(randomblob\(4\)\)/)
   })
 
   it('turns many-to-many links into junction tables with a composite key', () => {

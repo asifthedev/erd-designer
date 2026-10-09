@@ -1,11 +1,13 @@
 import { create } from 'zustand'
-import type { ChatMessage, ChatToolCall, FocusSnapshot, RefineRequest } from '../../../shared/aiToolSpecs'
+import type { ChatMessage, ChatToolCall, FocusSnapshot, RefineRequest, RefineTool } from '../../../shared/aiToolSpecs'
 import { ApiError } from '../auth/api'
 import { useAuth } from '../auth/store'
+import type { Provider } from '../core/model'
 import { toWorkspace, useStore, type Workspace } from '../store'
 import { fetchModels, streamChat, type ModelOption, type ModelsResponse } from './api'
-import { runTool, type Canvas } from './executor'
+import { runTool, unpredictableIds, type Canvas } from './executor'
 import { pickedItems } from './focus'
+import { generateCode, prepareRefine, toolInfo, DB_LABEL } from './refine'
 import { layoutReport } from './layoutReport'
 import { canvasSnapshot } from './snapshot'
 
@@ -45,12 +47,16 @@ export type UiMessage = {
   about?: string[]
   /** A "Refine for production" request: shown as a label instead of the long message that carries the schema. */
   refine?: string
+  /** What a refine ended with: the schema as the chosen tool's code, ready to copy. */
+  refinedCode?: { tool: RefineTool; file: string; fence: string; code: string }
 }
 
 type Undo = { workspace: Workspace; diagramId: string | null; changes: number }
 
 export type SendOptions = {
   refine?: RefineRequest
+  /** Work to do on the canvas first (inside the same undo), returning the message to send. */
+  prepare?: () => { text: string; changes: number }
   /** What to show as the person's message when it is not the text itself (the refine request carries a whole schema). */
   display?: string
 }
@@ -75,6 +81,8 @@ type AiState = {
   loadModels: () => Promise<void>
   selectModel: (id: string) => void
   send: (text: string, options?: SendOptions) => Promise<void>
+  /** "Refine for production" for one tool and database: ids made unguessable by the app, the rest by the model, ending with the code. */
+  refine: (tool: RefineTool, database: Provider) => Promise<void>
   stop: () => void
   newChat: () => void
   undoLast: () => void
@@ -185,6 +193,24 @@ export const useAi = create<AiState>()((set, get) => {
     return anyOk
   }
 
+  /**
+   * The last word of a refine is the app's, not the model's: any integer id the model left (or added) is made unguessable,
+   * and the result is shown as the code of the tool it was refined for.
+   */
+  function finishRefine(refine: RefineRequest, turn: { changes: number }) {
+    const state = useStore.getState()
+    const ids = unpredictableIds({ provider: state.provider, nodes: state.nodes, manyToMany: state.manyToMany })
+    if (ids.changed.length) {
+      useStore.getState().applyAiCanvas(ids.canvas)
+      turn.changes++
+      set((s) => ({ changeTick: s.changeTick + 1 }))
+      patchLast((m) => ({ ...m, tools: [...(m.tools ?? []), { id: newId(), name: 'use_unpredictable_ids', ok: true, summary: `Ids are now unguessable in ${ids.changed.length} more table${ids.changed.length === 1 ? '' : 's'}: ${ids.changed.join(', ')}` }] }))
+    }
+    const info = toolInfo(refine.tool)
+    const code = generateCode(refine.tool, useStore.getState())
+    patchLast((m) => ({ ...m, refinedCode: { tool: refine.tool, file: info.file, fence: info.fence, code } }))
+  }
+
   return {
     enabled: null,
     models: [],
@@ -240,9 +266,16 @@ export const useAi = create<AiState>()((set, get) => {
       set((s) => ({ undo: null, undone: true, changeTick: s.changeTick + 1 }))
     },
 
+    refine: (tool, database) =>
+      get().send('Refine for production', {
+        refine: { tool, database },
+        display: `Refine for production \u00b7 ${toolInfo(tool).label} \u00b7 ${DB_LABEL[database]}`,
+        prepare: () => prepareRefine(tool, database),
+      }),
+
     send: async (raw, options = {}) => {
-      const text = raw.trim()
-      if (!text || get().busy) return
+      let text = raw.trim()
+      if ((!text && !options.prepare) || get().busy) return
       const auth = useAuth.getState()
       if (auth.status !== 'authed') {
         addError('Log in to use the AI assistant.', 'login')
@@ -251,6 +284,13 @@ export const useAi = create<AiState>()((set, get) => {
       abort = new AbortController()
       const { signal } = abort
       const before: Undo = { workspace: toWorkspace(useStore.getState()), diagramId: auth.currentId, changes: 0 }
+      const turn = { diagramId: auth.currentId, changes: 0 }
+      if (options.prepare) {
+        const prepared = options.prepare()
+        text = prepared.text
+        turn.changes += prepared.changes
+        if (prepared.changes) set((s) => ({ changeTick: s.changeTick + 1 }))
+      }
       // What is picked on the canvas right now is what this question is about; it stays the same for every round of it.
       // (A refine is about the whole schema, whatever happens to be picked.)
       const picked = options.refine ? { items: [], snapshot: { tables: [], columns: [], relations: [], manyToMany: [] } } : pickedItems(useStore.getState())
@@ -272,7 +312,6 @@ export const useAi = create<AiState>()((set, get) => {
       wire.push({ role: 'user', content: `${get().undone ? '(The person undid your last changes to the canvas.)\n' : ''}${prefix}${text}` })
       set({ undone: false })
       const chips: ToolChip[] = []
-      const turn = { diagramId: auth.currentId, changes: 0 }
       let failedRounds = 0
       let checks = 0
       let changedSinceCheck = false
@@ -352,6 +391,7 @@ export const useAi = create<AiState>()((set, get) => {
             break
           }
         }
+        if (options.refine) finishRefine(options.refine, turn)
       } catch (e) {
         if (e instanceof SwitchedAway) {
           patchLast((m) => ({ ...m, notice: 'Stopped: you opened another diagram.' }))

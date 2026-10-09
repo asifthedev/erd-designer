@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../auth/api'
 import { useStore } from '../store'
+import { runTool } from './executor'
 import type { ServerEvent } from './api'
 
 /** What the stand-in model does on its n-th call: events to stream, or a failure. */
@@ -58,6 +59,7 @@ beforeEach(() => {
   model.bodies = []
   model.vision = false
   setCanvasCapture(null)
+  useStore.setState({ provider: 'postgresql' })
   authState.status = 'authed'
   authState.currentId = 'd1'
   authState.createDiagram.mockClear()
@@ -404,5 +406,90 @@ describe('checking its own work', () => {
     const roles = model.bodies.at(-1).messages.map((m: any) => m.role)
     expect(roles.at(-1)).toBe('user')
     expect(model.bodies.at(-1).messages.some((m: any) => /Automatic check/.test(m.content ?? ''))).toBe(false) // the unanswered check is gone
+  })
+})
+
+describe('refine for production', () => {
+  const build = async () => {
+    model.rounds = [[tool('c', 'create_tables', { tables: [makeTable('customer'), { name: 'order', columns: [{ name: 'id', type: 'SERIAL', primaryKey: true }, { name: 'customer_id', type: 'INT', references: { table: 'customer' } }] }] }), done('tool_calls')], [text('built'), done()]]
+    await useAi.getState().send('make two tables')
+    model.bodies = []
+    useAi.getState().newChat()
+  }
+  const idOf = (name: string) => useStore.getState().nodes.find((n) => n.data.name === name)!.data.columns[0]
+
+  it('changes the ids itself BEFORE the model sees the schema, so the code it is given has no integer ids', async () => {
+    await build()
+    model.rounds = [[text('Done: **IDs** are UUIDs.'), done()]]
+    await useAi.getState().refine('prisma', 'postgresql')
+    const sent = model.bodies[0].messages.at(-1).content as string
+    expect(sent).toContain('Target tool: Prisma')
+    expect(sent).toContain('Target database: PostgreSQL')
+    expect(sent).toContain('already replaced the sequential integer ids of customer, order')
+    expect(sent).toMatch(/String\s+@id @default\(uuid\(\)\) @db\.Uuid/)
+    expect(sent).not.toMatch(/autoincrement|Int\s+@id/)
+    expect(model.bodies[0].refine).toEqual({ tool: 'prisma', database: 'postgresql' })
+    expect(idOf('customer')).toMatchObject({ type: 'UUID', default: 'gen_random_uuid()' })
+    expect(useStore.getState().nodes.find((n) => n.data.name === 'order')!.data.columns[1].type).toBe('UUID')
+    expect(useAi.getState().messages.find((m) => m.role === 'user' && m.refine)?.text).toBe('Refine for production \u00b7 Prisma \u00b7 PostgreSQL')
+  })
+
+  it('ends with the refined code of the chosen tool, ready to copy', async () => {
+    await build()
+    model.rounds = [[text('Done.'), done()]]
+    await useAi.getState().refine('drizzle', 'postgresql')
+    const code = last().refinedCode!
+    expect(code).toMatchObject({ tool: 'drizzle', file: 'schema.ts' })
+    expect(code.code).toContain("uuid('id').primaryKey().defaultRandom()")
+    expect(code.code).not.toMatch(/serial\(/)
+  })
+
+  it('whatever the model leaves or adds, the app has the last word: no integer id is left', async () => {
+    await build()
+    model.rounds = [
+      [tool('t', 'create_tables', { tables: [{ name: 'audit_log', columns: [{ name: 'id', type: 'BIGSERIAL', primaryKey: true }, { name: 'order_id', type: 'UUID', references: { table: 'order' } }] }] }), done('tool_calls')],
+      [text('Added an audit log.'), done()],
+    ]
+    await useAi.getState().refine('sql', 'postgresql')
+    expect(idOf('audit_log')).toMatchObject({ type: 'UUID', default: 'gen_random_uuid()' })
+    for (const n of useStore.getState().nodes) for (const c of n.data.columns) expect(/serial|^int|bigint/i.test(c.type) && c.primaryKey, `${n.data.name}.${c.name}`).toBeFalsy()
+    expect(last().tools!.at(-1)).toMatchObject({ name: 'use_unpredictable_ids', ok: true })
+    expect(last().refinedCode!.code).not.toMatch(/SERIAL|AUTO_?INCREMENT/i)
+  })
+
+  it('switches to the chosen database first and uses its id type', async () => {
+    await build()
+    model.rounds = [[text('ok'), done()]]
+    await useAi.getState().refine('sql', 'mysql')
+    expect(useStore.getState().provider).toBe('mysql')
+    expect(idOf('customer')).toMatchObject({ type: 'CHAR(36)' })
+    expect(model.bodies[0].canvas.provider).toBe('mysql')
+    expect(model.bodies[0].messages.at(-1).content).toMatch(/CREATE TABLE/)
+  })
+
+  it('is one undo: everything, the ids included, goes back', async () => {
+    await build()
+    model.rounds = [[text('ok'), done()]]
+    await useAi.getState().refine('prisma', 'mysql')
+    expect(useAi.getState().undo).not.toBeNull()
+    useAi.getState().undoLast()
+    expect(useStore.getState().provider).toBe('postgresql')
+    expect(idOf('customer').type).toBe('SERIAL')
+  })
+
+  it('does nothing to the canvas when the person is not signed in', async () => {
+    await build()
+    authState.status = 'guest'
+    await useAi.getState().refine('prisma', 'postgresql')
+    expect(idOf('customer').type).toBe('SERIAL')
+    expect(model.bodies).toHaveLength(0)
+  })
+
+  it('an id that is already unguessable is not touched, and the model is told so', async () => {
+    await build()
+    useStore.getState().applyAiCanvas(runTool({ provider: 'postgresql', nodes: useStore.getState().nodes, manyToMany: [] }, 'use_unpredictable_ids', '{}', { maxTables: 50, uid: () => 'x' }).canvas)
+    model.rounds = [[text('fine'), done()]]
+    await useAi.getState().refine('prisma', 'postgresql')
+    expect(model.bodies[0].messages.at(-1).content).toContain('Every id is already non-sequential')
   })
 })

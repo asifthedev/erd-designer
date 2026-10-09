@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Lock } from 'lucide-react'
+import { Lock, Wand2 } from 'lucide-react'
 import { featureLockedProblem } from '../core/problems'
+import { useAi } from '../ai/agent'
 import { useFeature } from '../planHooks'
 import { showProblem } from './problemToast'
 import { generateDrizzle } from '../core/drizzle'
@@ -80,6 +81,12 @@ export function PrismaPanel() {
   const moreFormats = useFeature('codeFormats')
   const format = moreFormats ? chosen : 'prisma'
   const [copied, setCopied] = useState(false)
+  const busy = useAi((s) => s.busy)
+  // Refines exactly what is shown here: this code's tool, this database. The assistant takes over the side panel and ends with the new code.
+  const refine = () => {
+    useStore.setState({ aiOpen: true, codeOpen: false })
+    void useAi.getState().refine(format, provider)
+  }
 
   // Only the visible format is generated. The SQL follows the selected database.
   const schema = useMemo(() => {
@@ -118,6 +125,15 @@ export function PrismaPanel() {
     <section className="flex min-h-0 flex-1 flex-col">
       <header className="flex items-center gap-2 border-b border-line px-3 py-2">
         <h2 className="mr-auto font-semibold">{filename}</h2>
+        <button
+          type="button"
+          className={`${btn} flex items-center gap-1`}
+          disabled={!nodes.length || busy}
+          title="Rewrite this schema for production with AI: unguessable ids, right types, constraints"
+          onClick={refine}
+        >
+          <Wand2 size={13} aria-hidden /> Refine
+        </button>
         <button type="button" className={btn} onClick={copy}>
           {copied ? 'Copied' : 'Copy'}
         </button>

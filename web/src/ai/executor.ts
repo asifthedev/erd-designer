@@ -484,6 +484,57 @@ function autoLayout(canvas: Canvas): Outcome {
   return { ok: true, summary: 'Arranged the tables', message: `Arranged ${nodes.length} tables. ${layoutReport(next).text}`, canvas: next }
 }
 
+// ---- Ids nobody can guess ----------------------------------------------------------------------------------------
+
+/** What every database stores a random id in. The default is written once; each code generator writes it its own way. */
+export const UNPREDICTABLE_ID: Record<Provider, { type: string; default: string }> = {
+  postgresql: { type: 'UUID', default: 'gen_random_uuid()' },
+  mysql: { type: 'CHAR(36)', default: 'gen_random_uuid()' },
+  sqlite: { type: 'TEXT', default: 'gen_random_uuid()' },
+}
+
+/** INT, BIGINT, SMALLINT, TINYINT, MEDIUMINT, INTEGER, SERIAL, BIGSERIAL, SMALLSERIAL (with a size or UNSIGNED): a key that counts 1, 2, 3... */
+export const isSequentialType = (type: string) => /^(tiny|small|medium|big)?(int|integer|serial)\d?(\(\d+\))?(\s+unsigned)?$/i.test(type.trim())
+
+/**
+ * Makes every id unguessable: each table whose single-column primary key is an integer (or SERIAL) gets a random UUID
+ * key for the database, and every foreign key that points at one takes the same type. Pure, and safe to run again
+ * (a table that already has a UUID or text key is left alone). Primary keys that are made of several columns (the
+ * two keys of a junction table) are not counted: they follow the tables they point at.
+ */
+export function unpredictableIds(canvas: Canvas): { canvas: Canvas; changed: string[] } {
+  const target = UNPREDICTABLE_ID[canvas.provider]
+  const changedKeys = new Map<string, string>() // column id -> table name
+  const tables = canvas.nodes.map((n) => {
+    const pks = n.data.columns.filter((c) => c.primaryKey)
+    const key = pks.length === 1 && isSequentialType(pks[0].type) ? pks[0] : undefined
+    if (!key) return n
+    changedKeys.set(key.id, n.data.name)
+    return { ...n, data: { ...n.data, columns: n.data.columns.map((c) => (c.id === key.id ? { ...c, type: target.type, default: target.default, notNull: true } : c)) } }
+  })
+  if (!changedKeys.size) return { canvas, changed: [] }
+  const nodes = tables.map((n) =>
+    n.data.columns.some((c) => c.references && changedKeys.has(c.references.columnId))
+      ? { ...n, data: { ...n.data, columns: n.data.columns.map((c) => (c.references && changedKeys.has(c.references.columnId) ? { ...c, type: target.type, default: '' } : c)) } }
+      : n,
+  )
+  return { canvas: withNodes(canvas, nodes), changed: [...changedKeys.values()] }
+}
+
+function makeIdsUnpredictable(canvas: Canvas): Outcome {
+  const { canvas: next, changed } = unpredictableIds(canvas)
+  if (!changed.length) return { ok: true, summary: 'Ids are already unguessable', message: 'No sequential primary keys were found: nothing to change.', canvas }
+  const bad = relationProblems(next.provider, tablesOf(next.nodes))
+  if (bad.length) return fail(canvas, `Nothing was changed, the new keys would break relations:\n- ${problemsText(bad)}`)
+  const t = UNPREDICTABLE_ID[canvas.provider]
+  return {
+    ok: true,
+    summary: `Ids are now ${t.type} in ${changed.length} table${changed.length === 1 ? '' : 's'}`,
+    message: `Changed the primary key of ${changed.join(', ')} to ${t.type} with default ${t.default} (no more 1, 2, 3...), and every foreign key that points at them to ${t.type}.`,
+    canvas: next,
+  }
+}
+
 const coordinate = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 100_000 ? Math.round(v) : undefined)
 const sizeOf = (n: TableNodeType) => ({ w: n.measured?.width ?? TABLE_WIDTH, h: n.measured?.height ?? tableHeight(n.data) })
 
@@ -593,6 +644,8 @@ export function runTool(canvas: Canvas, name: string, rawArguments: string, ctx:
         return setDatabase(canvas, args)
       case 'auto_layout':
         return autoLayout(canvas)
+      case 'use_unpredictable_ids':
+        return makeIdsUnpredictable(canvas)
       case 'move_tables':
         return moveTables(canvas, args)
       case 'add_many_to_many':
