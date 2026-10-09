@@ -192,7 +192,7 @@ export function curveGeometry(
   bend?: Bend,
   /** Border-to-ring-centre distance at the source and at the target end (they differ for a "1" and an "n" end). */
   ends: { s: number; t: number } = { s: DEFAULT_RING, t: DEFAULT_RING },
-): { d: string; mid: Pt } {
+): { d: string; mid: Pt; tan: Pt } {
   const loop = sDir === tDir ? (v: number) => Math.max(v, MIN_LOOP) : (v: number) => v
   // The curve runs between the two ring centres; the stretch from each table border to its ring is a straight line.
   const p0: Pt = [sx + sDir * ends.s, sy]
@@ -213,5 +213,6 @@ export function curveGeometry(
   return {
     d: `M${at([sx, sy])}L${at(p0)}C${at(c1)} ${at(c2)} ${at(m)}C${at(c3)} ${at(c4)} ${at(p3)}L${at([tx, ty])}`,
     mid: m,
+    tan, // direction of travel (source to target) at the middle point
   }
 }

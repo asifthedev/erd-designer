@@ -6,7 +6,7 @@ import {
   type ConnectionLineComponentProps,
   type EdgeProps,
 } from '@xyflow/react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Bend } from '../core/model'
 import { curveGeometry, roundedPolyline, routeParts, routePoints, type Dir, type Pt } from '../core/routing'
@@ -34,7 +34,14 @@ const CORNER = 10 // radius of the rounded corners
 
 const dirOf = (p: Position): Dir => (p === Position.Right ? 1 : -1)
 
-/** Where the flip button sits: the middle of the vertical lane, or the middle point of a curve. */
+/** A vertical lane at least this long is where the flip button sits on a vertical line; a shorter one counts as level. */
+const VERTICAL_LANE = 24
+
+/**
+ * Where the flip button sits (the middle of the vertical lane, or the middle point of a curve) and the angle in degrees
+ * its arrow is turned to: 0 points right, 90 down, 180 left, -90 up. The arrow follows the line from the foreign key
+ * table to the table it references, so on a vertical stretch it points up or down instead of sideways.
+ */
 function midpoint(
   curved: boolean,
   sx: number,
@@ -47,11 +54,13 @@ function midpoint(
   ends: { s: number; t: number },
 ) {
   if (curved) {
-    const [x, y] = curveGeometry(sx, sy, dirOf(sPos), tx, ty, dirOf(tPos), bend, ends).mid
-    return { x, y }
+    const { mid, tan } = curveGeometry(sx, sy, dirOf(sPos), tx, ty, dirOf(tPos), bend, ends)
+    return { x: mid[0], y: mid[1], angle: (Math.atan2(tan[1], tan[0]) * 180) / Math.PI }
   }
   const [top, bottom] = routeParts(sx, sy, dirOf(sPos), tx, ty, dirOf(tPos), bend).lane
-  return { x: top[0], y: (top[1] + bottom[1]) / 2 }
+  const drop = bottom[1] - top[1]
+  const angle = Math.abs(drop) >= VERTICAL_LANE ? (drop > 0 ? 90 : -90) : tx >= sx ? 0 : 180
+  return { x: top[0], y: (top[1] + bottom[1]) / 2, angle }
 }
 
 /** Straight-edged `M x,y L x,y ...` path of a part of the route (used for the invisible grab areas). */
@@ -125,7 +134,7 @@ export function RelationEdge(props: EdgeProps) {
   const stroke = lit ? 'var(--color-link)' : 'var(--color-edge)'
   const width = lit ? 2 : 1.5
   const dir = (p: Position) => (p === Position.Right ? 1 : -1) as 1 | -1
-  const { x: midX, y: midY } = midpoint(
+  const { x: midX, y: midY, angle: arrowAngle } = midpoint(
     curved,
     sourceX,
     sourceY,
@@ -254,7 +263,7 @@ export function RelationEdge(props: EdgeProps) {
             }`}
           >
             {/* The arrow points from the foreign key table to the table it references. */}
-            {targetX >= sourceX ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+            <ChevronRight size={14} style={{ transform: `rotate(${arrowAngle}deg)` }} />
           </button>
         </EdgeLabelRenderer>
       )}
