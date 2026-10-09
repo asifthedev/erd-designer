@@ -26,7 +26,11 @@ const schema = z.object({
    * both, the admin panel answers 503 "not set up".
    */
   ADMIN_EMAIL: z.string().trim().toLowerCase().optional(),
-  ADMIN_PASSWORD_HASH: z.string().optional(),
+  // Pasting into a dashboard often adds a trailing space / newline or wraps the value in quotes: neither is part of the hash.
+  ADMIN_PASSWORD_HASH: z
+    .string()
+    .transform((v) => v.trim().replace(/^(['"])(.*)\1$/, '$2').trim())
+    .optional(),
   /** Requests for a code always take at least this long, so answers can't reveal whether an address has an account. */
   CODE_REQUEST_MIN_MS: z.coerce.number().int().min(0).default(900),
 })
